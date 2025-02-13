@@ -18,10 +18,11 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 * Alarm based on time.
 * Different display modes so there is more or less light emitted by the clock.
 * Contrast based on day or night.
-* 4 Home Assistant integrated switches that switch based on the alarm time, alarm does not have to sound. These switches be switched manually on the clock itself.
+* 4 Home Assistant integrated switches that switch based on the alarm time, alarm does not have to sound. These switches can be switched manually on the clock itself.
 * Customizable sleep timer.
 * Customizable snooze timer.
 * Online radio streams.
+* Decent sound.
 
 ## Requirements
 * < €25,-
@@ -121,6 +122,8 @@ esphome:
 ```
 
 Save the `fonts` folder into your ESPHome folder. The folder needs to be placed in the same directory as your YAML.
+
+Edit the `select` options with a stream URL and the name of the stream. To get some streams, install [radio browser](https://www.home-assistant.io/integrations/radio_browser/). Select a stream, send it to the clock and look at the ESPHome logging to view the URL of that stream.
 
 ## Usage
 
