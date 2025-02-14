@@ -234,3 +234,13 @@ The `Minimum night only` will have a smaller font for less light. The wifi icon 
 * Home Assistant file stream as fallback on internet failure
 * Local file as fallback when internet failure and Home Assistant failure/travel clock (https://esphome.io/guides/audio_clips_for_i2s.html)
 * Ability to save streamed url to local instead of having a list of streams (https://alshowto.com/home-assistant-and-esphome-how-to-series-1-step-3-make-a-simple-media-speaker/, see things that are quirky)
+
+## Changelog
+
+### 2025.2.14.1
+- Number cleanup
+- Switched to sliders instead of boxes for numbers
+- Alarm volume number is not internal anymore
+
+### 2025.2.13.1
+- Initial commit

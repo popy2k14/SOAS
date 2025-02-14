@@ -175,7 +175,7 @@ number:
     min_value: 0
     max_value: 100
     step: 1
-    mode: box
+    mode: slider
   - platform: template
     name: Screen contrast night
     optimistic: true
@@ -185,18 +185,18 @@ number:
     min_value: 0
     max_value: 100
     step: 1
-    mode: box
+    mode: slider
   - platform: template
     id: alarm_hour
     name: "Alarm hour"
-    entity_category: config
+    entity_category: None
     optimistic: true
     restore_value: true
     initial_value: 0
     min_value: 0
     max_value: 23
     step: 1
-    mode: box
+    mode: slider
     on_value:
       - script.execute:
           id: set_ha_0_trigger_time_script
@@ -210,7 +210,7 @@ number:
     min_value: 0
     max_value: 59
     step: 1
-    mode: box
+    mode: slider
     on_value:
       - script.execute:
           id: set_ha_0_trigger_time_script
@@ -224,7 +224,6 @@ number:
     min_value: 0
     max_value: 23
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Snooze minute"
@@ -236,7 +235,6 @@ number:
     min_value: 0
     max_value: 59
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Snooze duration"
@@ -248,7 +246,7 @@ number:
     min_value: 1
     max_value: 99
     step: 1
-    mode: box
+    mode: slider
   - platform: template
     name: "Home Assistant 1 pre minute"
     id: ha_1_pre_minute
@@ -259,7 +257,7 @@ number:
     min_value: -99
     max_value: 99
     step: 1
-    mode: box
+    mode: slider
     on_value:
       - script.execute:
           id: set_ha_1_trigger_time_script
@@ -273,7 +271,6 @@ number:
     min_value: 0
     max_value: 59
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Home Assistant 1 hour"
@@ -285,7 +282,6 @@ number:
     min_value: 0
     max_value: 23
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Home Assistant 2 pre minute"
@@ -297,7 +293,7 @@ number:
     min_value: -99
     max_value: 99
     step: 1
-    mode: box
+    mode: slider
     on_value:
       - script.execute:
           id: set_ha_2_trigger_time_script
@@ -311,7 +307,6 @@ number:
     min_value: 0
     max_value: 59
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Home Assistant 2 hour"
@@ -323,7 +318,6 @@ number:
     min_value: 0
     max_value: 23
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Home Assistant 3 pre minute"
@@ -335,7 +329,7 @@ number:
     min_value: -99
     max_value: 99
     step: 1
-    mode: box
+    mode: slider
     on_value:
       - script.execute:
           id: set_ha_3_trigger_time_script
@@ -349,7 +343,6 @@ number:
     min_value: 0
     max_value: 59
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Home Assistant 3 hour"
@@ -361,7 +354,6 @@ number:
     min_value: 0
     max_value: 23
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Home Assistant 4 pre minute"
@@ -373,7 +365,7 @@ number:
     min_value: -99
     max_value: 99
     step: 1
-    mode: box
+    mode: slider
     on_value:
       - script.execute:
           id: set_ha_4_trigger_time_script
@@ -387,7 +379,6 @@ number:
     min_value: 0
     max_value: 59
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Home Assistant 4 hour"
@@ -399,7 +390,6 @@ number:
     min_value: 0
     max_value: 23
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Alarm volume"
@@ -411,8 +401,7 @@ number:
     min_value: 0
     max_value: 100
     step: 1
-    mode: box
-    internal: true
+    mode: slider
     on_value:
       - media_player.volume_set: !lambda "return (x/100);"
   - platform: template
@@ -425,7 +414,7 @@ number:
     min_value: 10
     max_value: 180
     step: 5
-    mode: box
+    mode: slider
   - platform: template
     name: "Sleep timer minute"
     id: sleep_timer_minute
@@ -436,7 +425,6 @@ number:
     min_value: 0
     max_value: 59
     step: 1
-    mode: box
     internal: true
   - platform: template
     name: "Sleep timer 4 hour"
@@ -448,7 +436,6 @@ number:
     min_value: 0
     max_value: 23
     step: 1
-    mode: box
     internal: true
 
 text_sensor:
