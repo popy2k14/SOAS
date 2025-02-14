@@ -189,7 +189,7 @@ number:
   - platform: template
     id: alarm_hour
     name: "Alarm hour"
-    entity_category: None
+    entity_category: config
     optimistic: true
     restore_value: true
     initial_value: 0
