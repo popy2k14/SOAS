@@ -17,13 +17,10 @@ media_player:
     mode: mono
     on_play:
       - logger.log: "Playback started!"
-      - switch.turn_on: alarm_on
     on_pause:
       - logger.log: "Playback paused!"
-      - switch.turn_off: alarm_on
     on_idle:
       - logger.log: "Playback finished!"
-      - switch.turn_off: alarm_on
 
 font:
   - file: fonts/Roboto-Medium.ttf
@@ -106,6 +103,10 @@ globals:
   - id: api_connected
     type: bool
     restore_value: no
+    initial_value: 'false'
+  - id: alarm_on_after_reboot
+    type: bool
+    restore_value: yes
     initial_value: 'false'
 
 interval:
@@ -1025,8 +1026,14 @@ switch:
               mediaPlayerCall.perform();
               ESP_LOGD("media_player_alarm", "Setting stream url %s", selectState);
             }
+        - script.execute:
+            id: alarm_on_after_reboot_script
+            alarm_enabled: true
     on_turn_off:
       - media_player.stop:
+      - script.execute:
+          id: alarm_on_after_reboot_script
+          alarm_enabled: false
   - platform: restart
     id: clock_restart_switch
     name: "Restart"
@@ -2129,3 +2136,27 @@ script:
             id(sleep_timer_on).turn_off();
             ESP_LOGD("check_alarms", "sleep timer off");
           }
+  - id: alarm_on_after_reboot_script
+    mode: restart
+    parameters:
+      alarm_enabled: bool
+    then:
+      - if:
+          condition:
+            - lambda: |-
+                if (alarm_enabled) {
+                  return true;
+                }
+                return false;
+          then:
+            - globals.set:
+                id: alarm_on_after_reboot
+                value: "true"
+          # there are numerous ways the alarm_on will switch to off
+          # this will happen after reboot due to restore to off for some switches
+          # by having a 5 sec slack, playback detection after reboot will be more resillient
+          else:
+            - delay: 5000ms
+            - globals.set:
+                id: alarm_on_after_reboot
+                value: "false"

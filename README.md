@@ -109,15 +109,26 @@ esphome:
   name: alarm-clock-coen
   friendly_name: Alarm Clock Coen
   on_boot:
-    - priority: 800
+    - priority: 600
       then:
-        #sometimes the media_player starts with clicking sounds, playing media solves the problem
-        - media_player.volume_set: 0
-        - media_player.play_media: !lambda return id(alarm_stream_url).state.c_str();
-        - wait_until:
-            media_player.is_playing :
-        - media_player.stop:
-        - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
+      - if:
+          condition:
+            - lambda: 'return id(alarm_on_after_reboot);'
+          then: #restore playback
+            - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
+            - wait_until:
+                wifi.connected:
+            - switch.turn_on: alarm_on
+          else: #clicking workaround
+            - logger.log: "Alarm was off before reboot, preventing clicking sound"
+            - wait_until:
+                wifi.connected:
+            - media_player.volume_set: 0
+            - media_player.play_media: !lambda return id(alarm_stream_url).state.c_str();
+            - wait_until:
+                media_player.is_playing :
+            - media_player.stop:
+            - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
 
 ```
 
@@ -235,7 +246,13 @@ The `Minimum night only` will have a smaller font for less light. The wifi icon 
 * Local file as fallback when internet failure and Home Assistant failure/travel clock (https://esphome.io/guides/audio_clips_for_i2s.html)
 * Ability to save streamed url to local instead of having a list of streams (https://alshowto.com/home-assistant-and-esphome-how-to-series-1-step-3-make-a-simple-media-speaker/, see things that are quirky)
 
+## Known issues
+* If the variables have not been written to flash, playback could possible not restore if de clock crashes. Possible fix: https://community.home-assistant.io/t/flash-write-interval/401927/2
+
 ## Changelog
+
+### 2025.2.15.1
+ - Playback will be restored after reboot
 
 ### 2025.2.14.1
 - Number cleanup
