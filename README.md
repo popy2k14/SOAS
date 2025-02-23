@@ -110,25 +110,26 @@ esphome:
   friendly_name: Alarm Clock Coen
   on_boot:
     - priority: 600
-      then:
-      - if:
-          condition:
-            - lambda: 'return id(alarm_on_after_reboot);'
-          then: #restore playback
-            - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
-            - wait_until:
-                wifi.connected:
-            - switch.turn_on: alarm_on
-          else: #clicking workaround
-            - logger.log: "Alarm was off before reboot, preventing clicking sound"
-            - wait_until:
-                wifi.connected:
-            - media_player.volume_set: 0
-            - media_player.play_media: !lambda return id(alarm_stream_url).state.c_str();
-            - wait_until:
-                media_player.is_playing :
-            - media_player.stop:
-            - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
+      then: #clicking workaround
+        - if:
+            condition:
+              - lambda: 'return id(alarm_on_after_reboot);'
+            then: #restore playback
+              - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
+              - wait_until:
+                  lambda:
+                    return (id(time_sync_done) == true);
+              - switch.turn_on: alarm_on
+            else: #clicking workaround
+              - logger.log: "Alarm was off before reboot, preventing clicking sound"
+              - wait_until:
+                  wifi.connected:
+              - media_player.volume_set: 0
+              - media_player.play_media: !lambda return id(alarm_stream_url).state.c_str();
+              - wait_until:
+                  media_player.is_playing :
+              - media_player.stop:
+              - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
 
 ```
 
@@ -250,6 +251,11 @@ The `Minimum night only` will have a smaller font for less light. The wifi icon 
 * If the variables have not been written to flash, playback could possible not restore if de clock crashes. Possible fix: https://community.home-assistant.io/t/flash-write-interval/401927/2
 
 ## Changelog
+
+### 2025.2.23.1
+ - Multiple switches and numbers require time to be synced before their actions will take place, this makes sure settings will survive a reboot
+ - Snooze and the sleep timer are more resillient when they miss their schedule due to a reboot
+ - Multiple small bug fixes
 
 ### 2025.2.15.1
  - Playback will be restored after reboot

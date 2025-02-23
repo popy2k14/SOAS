@@ -89,6 +89,7 @@ font:
 globals:
   - id: time_sync_done
     type: bool
+    initial_value: "false"
   - id: time_sunrise
     type: bool
   - id: current_page_id
@@ -103,10 +104,6 @@ globals:
   - id: api_connected
     type: bool
     restore_value: no
-    initial_value: 'false'
-  - id: alarm_on_after_reboot
-    type: bool
-    restore_value: yes
     initial_value: 'false'
 
 interval:
@@ -216,25 +213,25 @@ number:
       - script.execute:
           id: set_ha_0_trigger_time_script
   - platform: template
-    id: snooze_hour
-    name: "Snooze hour"
+    name: "Snooze timestamp"
+    id: snooze_timestamp
     entity_category: config
     optimistic: true
     restore_value: true
     initial_value: 0
     min_value: 0
-    max_value: 23
-    step: 1
-    internal: true
-  - platform: template
-    name: "Snooze minute"
-    id: snooze_minute
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    min_value: 0
-    max_value: 59
+    max_value: 9223372036854775807
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return (id(time_sync_done) == true);'
+            then:
+              - lambda:
+                  time_t snoozeTimestampX = x;
+                  char snoozeDisplay[6];
+                  strftime(snoozeDisplay, sizeof(snoozeDisplay), "%H:%M", localtime(&snoozeTimestampX));
+                  id(snooze_time).publish_state(snoozeDisplay);
     step: 1
     internal: true
   - platform: template
@@ -417,25 +414,25 @@ number:
     step: 5
     mode: slider
   - platform: template
-    name: "Sleep timer minute"
-    id: sleep_timer_minute
+    name: "Sleep timer timestamp"
+    id: sleep_timer_timestamp
     entity_category: config
     optimistic: true
     restore_value: true
     initial_value: 0
     min_value: 0
-    max_value: 59
-    step: 1
-    internal: true
-  - platform: template
-    name: "Sleep timer 4 hour"
-    id: sleep_timer_hour
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    min_value: 0
-    max_value: 23
+    max_value: 9223372036854775807
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return (id(time_sync_done) == true);'
+            then:
+              - lambda:
+                  time_t sleepTimerTimestampX = x;
+                  char sleepTimer[6];
+                  strftime(sleepTimer, sizeof(sleepTimer), "%H:%M", localtime(&sleepTimerTimestampX));
+                  id(sleep_timer_time).publish_state(sleepTimer);
     step: 1
     internal: true
 
@@ -443,9 +440,21 @@ text_sensor:
   - platform: template
     name: "Sleep timer time"
     id: sleep_timer_time
+    lambda: |-
+      time_t sleepTimerTimestampTS = id(sleep_timer_timestamp).state;
+      char sleepTSDisplay[6];
+      strftime(sleepTSDisplay, sizeof(sleepTSDisplay), "%H:%M", localtime(&sleepTimerTimestampTS));
+      return esphome::str_sprintf(sleepTSDisplay);
+    update_interval: 60s
   - platform: template
     name: "Snooze time"
     id: snooze_time
+    lambda: |-
+      time_t snoozeTimestampTS = id(snooze_timestamp).state;
+      char snoozeTSDisplay[6];
+      strftime(snoozeTSDisplay, sizeof(snoozeTSDisplay), "%H:%M", localtime(&snoozeTimestampTS));
+      return esphome::str_sprintf(snoozeTSDisplay);
+    update_interval: 60s
   - platform: template
     name: "Home Assistant 1 time"
     id: ha_1_time
@@ -628,8 +637,6 @@ binary_sensor:
                                         - switch.is_off: alarm_on
                                       then:
                                         - switch.turn_on: alarm_on
-
-
   - platform: gpio
     pin:
       number: GPIO27 #D5
@@ -909,18 +916,27 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
     on_turn_on:
-      - if:
-          condition:
-            and:
-              - switch.is_on: alarm_on
-              - switch.is_off: sleep_timer_on
-          then:
-            - script.execute:
-                id: set_schedule_trigger_time_script
-                index: 6
-            - switch.turn_off: alarm_on
-          else:
-            - switch.turn_off: snooze_on
+      then:
+        - if:
+            condition:
+              lambda: 'return (id(time_sync_done) == true);'
+            then:
+              - if:
+                  condition:
+                    and:
+                      - switch.is_on: alarm_on
+                      - switch.is_off: sleep_timer_on
+                  then:
+                    - script.execute:
+                        id: set_schedule_trigger_time_script
+                        index: 6
+                    - switch.turn_off: alarm_on
+                  else:
+                    - switch.turn_off: snooze_on
+    on_turn_off:
+      - number.set:
+          id: snooze_timestamp
+          value: 0
   - platform: template
     id: ha_1_enabled
     name: "Home assistant 1 enabled"
@@ -1013,27 +1029,28 @@ switch:
     entity_category: config
     on_turn_on:
       then:
-        - lambda: |-
-            const esphome::optional<std::string> url = id(media_player_alarm).make_call().get_media_url();
-            if (url.has_value()) {
-              ESP_LOGD("media_player_alarm", "Media has URL");
-            }
-            else {
-              ESP_LOGD("media_player_alarm", "Media has no URL");
-              auto mediaPlayerCall = id(media_player_alarm).make_call();
-              auto selectState = id(alarm_stream_url).state.c_str();
-              mediaPlayerCall.set_media_url(selectState);
-              mediaPlayerCall.perform();
-              ESP_LOGD("media_player_alarm", "Setting stream url %s", selectState);
-            }
-        - script.execute:
-            id: alarm_on_after_reboot_script
-            alarm_enabled: true
+      - wait_until:
+          lambda: 'return (id(time_sync_done) == true);'
+      - lambda: |-
+          const esphome::optional<std::string> url = id(media_player_alarm).make_call().get_media_url();
+          if (url.has_value()) {
+            ESP_LOGD("media_player_alarm", "Media has URL");
+          }
+          else {
+            ESP_LOGD("media_player_alarm", "Media has no URL");
+            auto mediaPlayerCall = id(media_player_alarm).make_call();
+            auto selectState = id(alarm_stream_url).state.c_str();
+            mediaPlayerCall.set_media_url(selectState);
+            mediaPlayerCall.perform();
+            ESP_LOGD("media_player_alarm", "Setting stream url %s", selectState);
+          }
     on_turn_off:
-      - media_player.stop:
-      - script.execute:
-          id: alarm_on_after_reboot_script
-          alarm_enabled: false
+      then:
+        - if:
+            condition:
+              lambda: 'return (id(time_sync_done) == true);'
+            then:
+              - media_player.stop:
   - platform: restart
     id: clock_restart_switch
     name: "Restart"
@@ -1051,12 +1068,23 @@ switch:
     entity_category: config
     on_turn_on:
       then:
-        - script.execute:
-            id: set_schedule_trigger_time_script
-            index: 5
+        - if:
+            condition:
+              lambda: 'return (id(time_sync_done) == true);'
+            then:
+              - script.execute:
+                  id: set_schedule_trigger_time_script
+                  index: 5
     on_turn_off:
       then:
-        - switch.turn_off: alarm_on
+        - if:
+            condition:
+              lambda: 'return (id(time_sync_done) == true);'
+            then:
+              - switch.turn_off: alarm_on
+              - number.set:
+                  id: sleep_timer_timestamp
+                  value: 0
 
 display:
   - platform: ssd1306_i2c
@@ -1210,13 +1238,10 @@ display:
               it.printf(it.get_width(), (it.get_height()/2), timeFont20, TextAlign::CENTER_RIGHT, "%s%i:%s%i", preZeroHour.c_str(), (int)id(alarm_hour).state, preZeroMinute.c_str(), (int)id(alarm_minute).state);
             }
             else if (id(alarm_enabled).state && id(snooze_on).state) {
-              if (id(snooze_hour).state < 10) {
-                preZeroHour = "0";
-              }
-              if (id(snooze_minute).state < 10) {
-                preZeroMinute = "0";
-              }
-              it.printf(it.get_width(), (it.get_height()/2), timeFont20, TextAlign::CENTER_RIGHT, "%s%i:%s%i", preZeroHour.c_str(), (int)id(snooze_hour).state, preZeroMinute.c_str(), (int)id(snooze_minute).state);
+              time_t snoozeTime = id(snooze_timestamp).state;
+              char strForDisplay[6];
+              strftime(strForDisplay, sizeof(strForDisplay), "%H:%M", localtime(&snoozeTime));
+              it.printf(it.get_width(), (it.get_height()/2), timeFont20, TextAlign::CENTER_RIGHT, "%s", strForDisplay);
             }
           }
           //end statusbar
@@ -1649,14 +1674,12 @@ display:
         lambda: |-
           it.printf(0, (it.get_height()/2), id(robotomedium20), TextAlign::CENTER_LEFT, "\U000F057E");
           int value = id(alarm_volume).state;
-
-          ESP_LOGD("volume page", "Current volume %i", value);
           it.printf(it.get_width()/2, (it.get_height()/2), id(robotomedium40), TextAlign::CENTER, "%i", value);
           id(current_page_id) = 12;
 
 script:
   - id: rotary_encoder_script
-    mode: restart
+    mode: queued
     parameters:
       clockwise: bool
     then:
@@ -1670,7 +1693,7 @@ script:
           int rotate_switch_single_value = id(rotate_switch_single);
           int rotate_switch_double_value = id(rotate_switch_double);
 
-          ESP_LOGD("rotary_encoder_script", "Current page id %i", current_page_id_value);
+          //ESP_LOGD("rotary_encoder_script", "Current page id %i", current_page_id_value);
 
           if (current_page_id_value == 2) { //alarm clock page
             int hour_value = id(alarm_hour).state;
@@ -1858,7 +1881,7 @@ script:
             id(rotate_switch_single) = rotate_switch_single_value;
             id(reset_page_script).execute();
           }
-          else if (current_page_id_value == 12) { //alarm contrast page
+          else if (current_page_id_value == 12) { //alarm volume page
             int value = id(alarm_volume).state;
             if (clockwise == false) {
               value -=1;
@@ -1943,6 +1966,8 @@ script:
     parameters:
       index: int
     then:
+      - wait_until:
+          lambda: 'return (id(time_sync_done) == true);'
       - lambda: |-
           ESP_LOGD("set_schedule_trigger_time_script", "processing index %i", index);
           char str[20];
@@ -1974,7 +1999,7 @@ script:
           ESP_LOGD("set_schedule_trigger_time_script", "alarmHour %i alarmMinute %i alarmTime %i", alarmHour, alarmMinute, alarmTime);
           time_t newSchedule = currentTimeMidnight + alarmTime;
 
-          //substract the ha_pre_minute to get the time for the HA schedule
+          //substract the ha_pre_minute to get the time for the required schedule
           if (index == 1) {
             int ha1Seconds = (60 * id(ha_1_pre_minute).state);
             newSchedule += ha1Seconds;
@@ -2015,8 +2040,18 @@ script:
           strftime(scheduleHour, sizeof(scheduleHour), "%H", localtime(&newSchedule));
           strftime(scheduleMinute, sizeof(scheduleMinute), "%M", localtime(&newSchedule));
 
+          //string for display time
           char strForDisplay[6];
           strftime(strForDisplay, sizeof(strForDisplay), "%H:%M", localtime(&newSchedule));
+
+          //current time as timestamp
+          char cCurrentTime[64];
+          strftime(cCurrentTime, sizeof(cCurrentTime), "%s", localtime(&currentTimeForSchedule));
+          int currentTimestamp = atoi(cCurrentTime);
+          char cNewScheduleTimeStamp[64];
+          strftime(cNewScheduleTimeStamp, sizeof(cNewScheduleTimeStamp), "%s", localtime(&newSchedule));
+
+          //assign the new schedule
           if (index == 1) {
             auto haMinuteNumber1 = id(ha_1_minute).make_call();
             haMinuteNumber1.set_value(atoi(scheduleMinute));
@@ -2058,24 +2093,30 @@ script:
             id(ha_4_time).publish_state(strForDisplay);
           }
           else if (index == 5) {
-            auto sleepMinuteNumber = id(sleep_timer_minute).make_call();
-            sleepMinuteNumber.set_value(atoi(scheduleMinute));
-            sleepMinuteNumber.perform();
+            int sleepTimerTimestamp = id(sleep_timer_timestamp).state;
+            if (currentTimestamp > sleepTimerTimestamp) {
+              ESP_LOGD("set_schedule_trigger_time_script", "Updating sleep timer time");
 
-            auto sleepHourNumber = id(sleep_timer_hour).make_call();
-            sleepHourNumber.set_value(atoi(scheduleHour));
-            sleepHourNumber.perform();
-            id(sleep_timer_time).publish_state(strForDisplay);
+              auto sleepTimerTimestampNumber = id(sleep_timer_timestamp).make_call();
+              sleepTimerTimestampNumber.set_value(atoi(cNewScheduleTimeStamp));
+              sleepTimerTimestampNumber.perform();
+            }
+            else {
+              ESP_LOGD("set_schedule_trigger_time_script", "Not updating sleep timer time, current time is before sleeptimer");
+            }
           }
           else if (index == 6) {
-            auto snoozeHour = id(snooze_hour).make_call();
-            snoozeHour.set_value(atoi(scheduleHour));
-            snoozeHour.perform();
+            int snoozeTimestamp = id(snooze_timestamp).state;
+            if (currentTimestamp > snoozeTimestamp) {
+              ESP_LOGD("set_schedule_trigger_time_script", "Updating snooze time");
 
-            auto snoozeMinute = id(snooze_minute).make_call();
-            snoozeMinute.set_value(atoi(scheduleMinute));
-            snoozeMinute.perform();
-            id(snooze_time).publish_state(strForDisplay);
+              auto snoozeTimestampNumber = id(snooze_timestamp).make_call();
+              snoozeTimestampNumber.set_value(atoi(cNewScheduleTimeStamp));
+              snoozeTimestampNumber.perform();
+            }
+            else {
+              ESP_LOGD("set_schedule_trigger_time_script", "Not updating snooze time, current time is before snooze");
+            }
           }
   - id: check_alarms
     mode: restart
@@ -2091,22 +2132,14 @@ script:
           int iCurrentHour = atoi(cCurrentHour);
           int iCurrentMinute = atoi(cCurrentMinute);
 
+          //get the timestamp
+          char cCurrentTime[64];
+          strftime(cCurrentTime, sizeof(cCurrentTime), "%s", localtime(&currentTime));
+          int currentTimestamp = atoi(cCurrentTime);
+
           if (iCurrentHour == id(alarm_hour).state && iCurrentMinute == id(alarm_minute).state && !id(alarm_on).state && id(alarm_enabled).state) {
             id(alarm_on).turn_on();
             ESP_LOGD("check_alarms", "alarm on");
-          }
-          if (iCurrentHour == id(snooze_hour).state && iCurrentMinute == id(snooze_minute).state) {
-            if (id(snooze_on).state) {
-              id(snooze_on).turn_off();
-              ESP_LOGD("check_alarms", "snooze off");
-              if (id(alarm_enabled).state && !id(alarm_on).state) {
-                id(alarm_on).turn_on();
-                ESP_LOGD("check_alarms", "snooze alarm on");
-              }
-            }
-            else {
-              ESP_LOGD("check_alarms", "snooze already off");
-            }
           }
           if (iCurrentHour == id(ha_1_hour).state && iCurrentMinute == id(ha_1_minute).state && id(ha_1_enabled).state) {
             if (id(alarm_enabled).state && id(ha_1_alarmed).state || !id(ha_1_alarmed).state) {
@@ -2132,31 +2165,23 @@ script:
               ESP_LOGD("check_alarms", "ha 4 on");
             }
           }
-          if (iCurrentHour == id(sleep_timer_hour).state && iCurrentMinute == id(sleep_timer_minute).state) {
-            id(sleep_timer_on).turn_off();
-            ESP_LOGD("check_alarms", "sleep timer off");
+          if (id(snooze_on).state) {
+            int snoozeTimestamp = id(snooze_timestamp).state;
+            //ESP_LOGD("check_alarms", "current %i snooze %i", currentTimestamp, snoozeTimestamp);
+            if (currentTimestamp >= snoozeTimestamp) {
+              id(snooze_on).turn_off();
+              ESP_LOGD("check_alarms", "snooze off");
+              if (id(alarm_enabled).state && !id(alarm_on).state) {
+                id(alarm_on).turn_on();
+                ESP_LOGD("check_alarms", "snooze alarm on");
+              }
+            }
           }
-  - id: alarm_on_after_reboot_script
-    mode: restart
-    parameters:
-      alarm_enabled: bool
-    then:
-      - if:
-          condition:
-            - lambda: |-
-                if (alarm_enabled) {
-                  return true;
-                }
-                return false;
-          then:
-            - globals.set:
-                id: alarm_on_after_reboot
-                value: "true"
-          # there are numerous ways the alarm_on will switch to off
-          # this will happen after reboot due to restore to off for some switches
-          # by having a 5 sec slack, playback detection after reboot will be more resillient
-          else:
-            - delay: 5000ms
-            - globals.set:
-                id: alarm_on_after_reboot
-                value: "false"
+          if (id(sleep_timer_on).state) {
+            int sleepTimerTimestamp = id(sleep_timer_timestamp).state;
+            //ESP_LOGD("check_alarms", "current %i sleeptimer %i", currentTimestamp, sleepTimerTimestamp);
+            if (currentTimestamp >= sleepTimerTimestamp) {
+              id(sleep_timer_on).turn_off();
+              ESP_LOGD("check_alarms", "Sleep timer disabled");
+            }
+          }
