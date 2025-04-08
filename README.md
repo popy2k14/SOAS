@@ -106,8 +106,8 @@ select:
       - "Friendly name of the radio station"
 
 esphome:
-  name: alarm-clock-coen
-  friendly_name: Alarm Clock Coen
+  name: alarm-clock-soas
+  friendly_name: Alarm Clock SOAS
   on_boot:
     - priority: 600
       then: #clicking workaround
@@ -251,6 +251,10 @@ The `Minimum night only` will have a smaller font for less light. The wifi icon 
 * If the variables have not been written to flash, playback could possible not restore if de clock crashes. Possible fix: https://community.home-assistant.io/t/flash-write-interval/401927/2
 
 ## Changelog
+
+### 2025.4.8.1
+ - Alarms are now more resillient, it runs as soon as it is missed
+ - Multiple small improvements
 
 ### 2025.2.23.1
  - Multiple switches and numbers require time to be synced before their actions will take place, this makes sure settings will survive a reboot

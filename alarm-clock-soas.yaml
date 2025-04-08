@@ -143,7 +143,7 @@ time:
         lambda: |-
           id(time_sync_done) = true;
     on_time:
-      - seconds: 0
+      - seconds: 0,30
         minutes: "*"
         then:
           - script.execute: check_alarms
@@ -198,6 +198,8 @@ number:
     on_value:
       - script.execute:
           id: set_ha_0_trigger_time_script
+      - script.execute:
+          id: set_alarm_last_off
   - platform: template
     name: "Alarm minute"
     id: alarm_minute
@@ -212,6 +214,8 @@ number:
     on_value:
       - script.execute:
           id: set_ha_0_trigger_time_script
+      - script.execute:
+          id: set_alarm_last_off
   - platform: template
     name: "Snooze timestamp"
     id: snooze_timestamp
@@ -228,10 +232,12 @@ number:
               lambda: 'return (id(time_sync_done) == true);'
             then:
               - lambda:
+                  ESP_LOGD("snooze_timestamp", "snooze_timestamp %i will be set", x);
                   time_t snoozeTimestampX = x;
                   char snoozeDisplay[6];
                   strftime(snoozeDisplay, sizeof(snoozeDisplay), "%H:%M", localtime(&snoozeTimestampX));
                   id(snooze_time).publish_state(snoozeDisplay);
+                  ESP_LOGD("snooze_timestamp", "snooze_timestamp %i is set", x);
     step: 1
     internal: true
   - platform: template
@@ -435,6 +441,17 @@ number:
                   id(sleep_timer_time).publish_state(sleepTimer);
     step: 1
     internal: true
+  - platform: template
+    name: "Alarm last off"
+    id: alarm_last_off
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 9223372036854775807
+    step: 0
+    internal: true
 
 text_sensor:
   - platform: template
@@ -573,7 +590,9 @@ binary_sensor:
   - platform: gpio
     pin:
       number: GPIO21
-      mode: INPUT_PULLUP
+      mode:
+        input: true
+        pullup: true
       inverted: true
     name: "Alarm off"
     on_multi_click:
@@ -598,7 +617,7 @@ binary_sensor:
                     then:
                       - switch.turn_on: sleep_timer_on
       - timing: #single click
-        - ON for at most 0.5s
+        - ON for at most 1s
         - OFF for at least 0.5s
         then:
           - if:
@@ -909,6 +928,10 @@ switch:
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
+    on_turn_on:
+      then:
+        - script.execute:
+            id: set_alarm_last_off
   - platform: template
     id: snooze_on
     name: "Snooze on"
@@ -1051,6 +1074,9 @@ switch:
               lambda: 'return (id(time_sync_done) == true);'
             then:
               - media_player.stop:
+        - script.execute:
+            id: set_alarm_last_off
+
   - platform: restart
     id: clock_restart_switch
     name: "Restart"
@@ -1980,13 +2006,16 @@ script:
           strftime(currentHour, sizeof(currentHour), "%H", localtime(&currentTimeForSchedule));
           strftime(currentMinute, sizeof(currentMinute), "%M", localtime(&currentTimeForSchedule));
           strftime(currentSecond, sizeof(currentSecond), "%S", localtime(&currentTimeForSchedule));
-          currentTimeForSchedule -= atoi(currentSecond); //second 0 of the current minute
+          int iCurrentHour = atoi(currentHour);
+          int iCurrentMinute = atoi(currentMinute);
+          int iCurrentSecond = atoi(currentSecond);
+          currentTimeForSchedule -= iCurrentSecond; //second 0 of the current minute
 
           strftime(str, sizeof(str), "%Y-%m-%d %H:%M:%S", localtime(&currentTimeForSchedule));
           ESP_LOGD("set_schedule_trigger_time_script", "currentTimeForSchedule time %s", str);
 
           time_t currentTimeMidnight = currentTimeForSchedule;
-          int secondsFromMidnight = (atoi(currentHour) * 60 * 60) + (atoi(currentMinute) * 60);
+          int secondsFromMidnight = (iCurrentHour * 60 * 60) + (iCurrentMinute * 60);
           currentTimeMidnight -= secondsFromMidnight;
 
           strftime(str, sizeof(str), "%Y-%m-%d %H:%M:%S", localtime(&currentTimeMidnight));
@@ -2045,11 +2074,8 @@ script:
           strftime(strForDisplay, sizeof(strForDisplay), "%H:%M", localtime(&newSchedule));
 
           //current time as timestamp
-          char cCurrentTime[64];
-          strftime(cCurrentTime, sizeof(cCurrentTime), "%s", localtime(&currentTimeForSchedule));
-          int currentTimestamp = atoi(cCurrentTime);
-          char cNewScheduleTimeStamp[64];
-          strftime(cNewScheduleTimeStamp, sizeof(cNewScheduleTimeStamp), "%s", localtime(&newSchedule));
+          int currentTimestamp = currentTimeForSchedule;
+          int iNewScheduleTimeStamp = newSchedule;
 
           //assign the new schedule
           if (index == 1) {
@@ -2098,7 +2124,7 @@ script:
               ESP_LOGD("set_schedule_trigger_time_script", "Updating sleep timer time");
 
               auto sleepTimerTimestampNumber = id(sleep_timer_timestamp).make_call();
-              sleepTimerTimestampNumber.set_value(atoi(cNewScheduleTimeStamp));
+              sleepTimerTimestampNumber.set_value(iNewScheduleTimeStamp);
               sleepTimerTimestampNumber.perform();
             }
             else {
@@ -2108,10 +2134,10 @@ script:
           else if (index == 6) {
             int snoozeTimestamp = id(snooze_timestamp).state;
             if (currentTimestamp > snoozeTimestamp) {
-              ESP_LOGD("set_schedule_trigger_time_script", "Updating snooze time");
+              ESP_LOGD("set_schedule_trigger_time_script", "Updating snooze time with %i", iNewScheduleTimeStamp);
 
               auto snoozeTimestampNumber = id(snooze_timestamp).make_call();
-              snoozeTimestampNumber.set_value(atoi(cNewScheduleTimeStamp));
+              snoozeTimestampNumber.set_value(iNewScheduleTimeStamp);
               snoozeTimestampNumber.perform();
             }
             else {
@@ -2122,25 +2148,40 @@ script:
     mode: restart
     then:
       - lambda: |-
-          time_t currentTime = id(ntp).now().timestamp;
+          time_t currentTimeForAlarm = id(ntp).now().timestamp;
 
-          //get the hours and minutes
+          //get time to calculate with
           char cCurrentHour[5];
           char cCurrentMinute[5];
-          strftime(cCurrentHour, sizeof(cCurrentHour), "%H", localtime(&currentTime));
-          strftime(cCurrentMinute, sizeof(cCurrentMinute), "%M", localtime(&currentTime));
+          char cCurrentSecond[5];
+          strftime(cCurrentHour, sizeof(cCurrentHour), "%H", localtime(&currentTimeForAlarm));
+          strftime(cCurrentMinute, sizeof(cCurrentMinute), "%M", localtime(&currentTimeForAlarm));
+          strftime(cCurrentSecond, sizeof(cCurrentSecond), "%S", localtime(&currentTimeForAlarm));
           int iCurrentHour = atoi(cCurrentHour);
           int iCurrentMinute = atoi(cCurrentMinute);
+          int iCurrentSecond = atoi(cCurrentSecond);
+          int iAlarmHours = id(alarm_hour).state;
+          int iAlarmMinutes = id(alarm_minute).state;
 
           //get the timestamp
-          char cCurrentTime[64];
-          strftime(cCurrentTime, sizeof(cCurrentTime), "%s", localtime(&currentTime));
-          int currentTimestamp = atoi(cCurrentTime);
+          int currentTimeForAlarmTimeStamp = currentTimeForAlarm;
 
-          if (iCurrentHour == id(alarm_hour).state && iCurrentMinute == id(alarm_minute).state && !id(alarm_on).state && id(alarm_enabled).state) {
-            id(alarm_on).turn_on();
-            ESP_LOGD("check_alarms", "alarm on");
+          if (!id(alarm_on).state && id(alarm_enabled).state) {
+            //get the midnight of today
+            time_t currentTimeForAlarmMidnight = currentTimeForAlarm; //second 0 of the current minute
+            int secondsFromMidnight = (iCurrentHour * 60 * 60) + (iCurrentMinute * 60) + iCurrentSecond;
+            currentTimeForAlarmMidnight -= secondsFromMidnight;
+            int iCurrentTimeForAlarmMidnight = currentTimeForAlarmMidnight;
+            int alarmTimeStamp = iCurrentTimeForAlarmMidnight + (iAlarmHours * 60  * 60) + (iAlarmMinutes * 60);
+            int alarmOffTimeStamp = id(alarm_last_off).state;
+            if (alarmTimeStamp <= currentTimeForAlarmTimeStamp) { //alarm time has passed
+              if (alarmOffTimeStamp <= alarmTimeStamp) { //alarm time is after the last time alarm was set to off
+                id(alarm_on).turn_on();
+                ESP_LOGD("check_alarms", "alarm on");
+              }
+            }
           }
+
           if (iCurrentHour == id(ha_1_hour).state && iCurrentMinute == id(ha_1_minute).state && id(ha_1_enabled).state) {
             if (id(alarm_enabled).state && id(ha_1_alarmed).state || !id(ha_1_alarmed).state) {
               id(ha_1_on).turn_on();
@@ -2167,8 +2208,8 @@ script:
           }
           if (id(snooze_on).state) {
             int snoozeTimestamp = id(snooze_timestamp).state;
-            //ESP_LOGD("check_alarms", "current %i snooze %i", currentTimestamp, snoozeTimestamp);
-            if (currentTimestamp >= snoozeTimestamp) {
+            //ESP_LOGD("check_alarms", "current %i snooze %i", currentTimeForAlarmTimeStamp, snoozeTimestamp);
+            if (currentTimeForAlarmTimeStamp >= snoozeTimestamp) {
               id(snooze_on).turn_off();
               ESP_LOGD("check_alarms", "snooze off");
               if (id(alarm_enabled).state && !id(alarm_on).state) {
@@ -2179,9 +2220,16 @@ script:
           }
           if (id(sleep_timer_on).state) {
             int sleepTimerTimestamp = id(sleep_timer_timestamp).state;
-            //ESP_LOGD("check_alarms", "current %i sleeptimer %i", currentTimestamp, sleepTimerTimestamp);
-            if (currentTimestamp >= sleepTimerTimestamp) {
+            //ESP_LOGD("check_alarms", "current %i sleeptimer %i", currentTimeForAlarmTimeStamp, sleepTimerTimestamp);
+            if (currentTimeForAlarmTimeStamp >= sleepTimerTimestamp) {
               id(sleep_timer_on).turn_off();
               ESP_LOGD("check_alarms", "Sleep timer disabled");
             }
           }
+  - id: set_alarm_last_off
+    then:
+      - lambda:
+          int currentTimeForAlarmOff = id(ntp).now().timestamp;
+          auto alarmLastOffNumber = id(alarm_last_off).make_call();
+          alarmLastOffNumber.set_value(currentTimeForAlarmOff);
+          alarmLastOffNumber.perform();
