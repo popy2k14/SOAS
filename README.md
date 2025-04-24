@@ -83,11 +83,11 @@ Include the config below in your YAML:
 substitutions:
   display_model: "SH1107 128x128" #use "SH1106 128x64" for SH1106
   display_rotation: "270" #use 0 for SH1106
+  sun_latitude: 52.37°
+  sun_longitude: 4.89°
 
 packages:
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
-  sun_latitude: 52.37°
-  sun_longitude: 4.89°
 
 time:
   - id: !extend ntp
@@ -113,7 +113,7 @@ esphome:
       then: #clicking workaround
         - if:
             condition:
-              - lambda: 'return id(alarm_on_after_reboot);'
+              - switch.is_on: alarm_on
             then: #restore playback
               - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
               - wait_until:
@@ -130,7 +130,6 @@ esphome:
                   media_player.is_playing :
               - media_player.stop:
               - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
-
 ```
 
 Save the `fonts` folder into your ESPHome folder. The folder needs to be placed in the same directory as your YAML.
@@ -251,6 +250,10 @@ The `Minimum night only` will have a smaller font for less light. The wifi icon 
 * If the variables have not been written to flash, playback could possible not restore if de clock crashes. Possible fix: https://community.home-assistant.io/t/flash-write-interval/401927/2
 
 ## Changelog
+
+### 2025.4.24.1
+ - Time handling improvements
+ - Solved issue #1
 
 ### 2025.4.8.1
  - Alarms are now more resillient, it runs as soon as it is missed

@@ -105,6 +105,14 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: alarm_last_off
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: snooze_timestamp
+    type: int
+    restore_value: yes
+    initial_value: '0'
 
 interval:
   - interval: 10s
@@ -216,30 +224,6 @@ number:
           id: set_ha_0_trigger_time_script
       - script.execute:
           id: set_alarm_last_off
-  - platform: template
-    name: "Snooze timestamp"
-    id: snooze_timestamp
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    min_value: 0
-    max_value: 9223372036854775807
-    on_value:
-      then:
-        - if:
-            condition:
-              lambda: 'return (id(time_sync_done) == true);'
-            then:
-              - lambda:
-                  ESP_LOGD("snooze_timestamp", "snooze_timestamp %i will be set", x);
-                  time_t snoozeTimestampX = x;
-                  char snoozeDisplay[6];
-                  strftime(snoozeDisplay, sizeof(snoozeDisplay), "%H:%M", localtime(&snoozeTimestampX));
-                  id(snooze_time).publish_state(snoozeDisplay);
-                  ESP_LOGD("snooze_timestamp", "snooze_timestamp %i is set", x);
-    step: 1
-    internal: true
   - platform: template
     name: "Snooze duration"
     id: snooze_duration
@@ -441,17 +425,6 @@ number:
                   id(sleep_timer_time).publish_state(sleepTimer);
     step: 1
     internal: true
-  - platform: template
-    name: "Alarm last off"
-    id: alarm_last_off
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    min_value: 0
-    max_value: 9223372036854775807
-    step: 0
-    internal: true
 
 text_sensor:
   - platform: template
@@ -467,7 +440,7 @@ text_sensor:
     name: "Snooze time"
     id: snooze_time
     lambda: |-
-      time_t snoozeTimestampTS = id(snooze_timestamp).state;
+      time_t snoozeTimestampTS = id(snooze_timestamp);
       char snoozeTSDisplay[6];
       strftime(snoozeTSDisplay, sizeof(snoozeTSDisplay), "%H:%M", localtime(&snoozeTimestampTS));
       return esphome::str_sprintf(snoozeTSDisplay);
@@ -957,9 +930,9 @@ switch:
                   else:
                     - switch.turn_off: snooze_on
     on_turn_off:
-      - number.set:
-          id: snooze_timestamp
-          value: 0
+      - script.execute:
+          id: set_snooze_timestamp
+          timestamp: 0
   - platform: template
     id: ha_1_enabled
     name: "Home assistant 1 enabled"
@@ -1264,7 +1237,7 @@ display:
               it.printf(it.get_width(), (it.get_height()/2), timeFont20, TextAlign::CENTER_RIGHT, "%s%i:%s%i", preZeroHour.c_str(), (int)id(alarm_hour).state, preZeroMinute.c_str(), (int)id(alarm_minute).state);
             }
             else if (id(alarm_enabled).state && id(snooze_on).state) {
-              time_t snoozeTime = id(snooze_timestamp).state;
+              time_t snoozeTime = id(snooze_timestamp);
               char strForDisplay[6];
               strftime(strForDisplay, sizeof(strForDisplay), "%H:%M", localtime(&snoozeTime));
               it.printf(it.get_width(), (it.get_height()/2), timeFont20, TextAlign::CENTER_RIGHT, "%s", strForDisplay);
@@ -2132,13 +2105,10 @@ script:
             }
           }
           else if (index == 6) {
-            int snoozeTimestamp = id(snooze_timestamp).state;
+            int snoozeTimestamp = id(snooze_timestamp);
             if (currentTimestamp > snoozeTimestamp) {
               ESP_LOGD("set_schedule_trigger_time_script", "Updating snooze time with %i", iNewScheduleTimeStamp);
-
-              auto snoozeTimestampNumber = id(snooze_timestamp).make_call();
-              snoozeTimestampNumber.set_value(iNewScheduleTimeStamp);
-              snoozeTimestampNumber.perform();
+              id(set_snooze_timestamp).execute(iNewScheduleTimeStamp);
             }
             else {
               ESP_LOGD("set_schedule_trigger_time_script", "Not updating snooze time, current time is before snooze");
@@ -2173,7 +2143,7 @@ script:
             currentTimeForAlarmMidnight -= secondsFromMidnight;
             int iCurrentTimeForAlarmMidnight = currentTimeForAlarmMidnight;
             int alarmTimeStamp = iCurrentTimeForAlarmMidnight + (iAlarmHours * 60  * 60) + (iAlarmMinutes * 60);
-            int alarmOffTimeStamp = id(alarm_last_off).state;
+            int alarmOffTimeStamp = id(alarm_last_off);
             if (alarmTimeStamp <= currentTimeForAlarmTimeStamp) { //alarm time has passed
               if (alarmOffTimeStamp <= alarmTimeStamp) { //alarm time is after the last time alarm was set to off
                 id(alarm_on).turn_on();
@@ -2207,7 +2177,7 @@ script:
             }
           }
           if (id(snooze_on).state) {
-            int snoozeTimestamp = id(snooze_timestamp).state;
+            int snoozeTimestamp = id(snooze_timestamp);
             //ESP_LOGD("check_alarms", "current %i snooze %i", currentTimeForAlarmTimeStamp, snoozeTimestamp);
             if (currentTimeForAlarmTimeStamp >= snoozeTimestamp) {
               id(snooze_on).turn_off();
@@ -2229,7 +2199,17 @@ script:
   - id: set_alarm_last_off
     then:
       - lambda:
-          int currentTimeForAlarmOff = id(ntp).now().timestamp;
-          auto alarmLastOffNumber = id(alarm_last_off).make_call();
-          alarmLastOffNumber.set_value(currentTimeForAlarmOff);
-          alarmLastOffNumber.perform();
+          id(alarm_last_off) = id(ntp).now().timestamp;
+          ESP_LOGD("set_alarm_last_off", "alarm_last_off %i", id(alarm_last_off));
+  - id: set_snooze_timestamp
+    parameters:
+      timestamp: int
+    then:
+      - lambda:
+          id(snooze_timestamp) = timestamp;
+          ESP_LOGD("set_alarm_last_off", "alarm_last_off %i", id(snooze_timestamp));
+      - if:
+          condition:
+            - lambda: 'return { (id(time_sync_done) == true) };'
+          then:
+            - component.update: snooze_time
