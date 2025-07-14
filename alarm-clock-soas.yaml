@@ -1,19 +1,19 @@
 i2c:
-  sda: GPIO18
-  scl: GPIO23
+  sda: ${i2c_sda}
+  scl: ${i2c_scl}
   frequency: 800kHz
 
 i2s_audio:
   - id: i2s_out
-    i2s_lrclk_pin: GPIO33
-    i2s_bclk_pin: GPIO22
+    i2s_lrclk_pin: ${i2s_lrclk_pin}
+    i2s_bclk_pin: ${i2s_bclk_pin}
 
 media_player:
   - platform: i2s_audio
     name: Media player alarm
     id: media_player_alarm
     dac_type: external
-    i2s_dout_pin: GPIO19
+    i2s_dout_pin: ${i2s_dout_pin}
     mode: mono
     on_play:
       - logger.log: "Playback started!"
@@ -475,10 +475,10 @@ sensor:
   - platform: rotary_encoder
     name: "Rotary Encoder"
     pin_a:
-      number: GPIO25 #D6
+      number: ${pin_a}
       mode: INPUT_PULLUP
     pin_b:
-      number: GPIO26 #D7
+      number: ${pin_b}
       mode: INPUT_PULLUP
     on_anticlockwise:
       then:
@@ -562,7 +562,7 @@ sensor:
 binary_sensor:
   - platform: gpio
     pin:
-      number: GPIO21
+      number: ${alarm_off_button_pin}
       mode:
         input: true
         pullup: true
@@ -631,7 +631,7 @@ binary_sensor:
                                         - switch.turn_on: alarm_on
   - platform: gpio
     pin:
-      number: GPIO27 #D5
+      number: ${rotary_button_pin}
       mode: INPUT_PULLUP
       inverted: true
     name: "Rotary Button"
@@ -1084,6 +1084,12 @@ switch:
               - number.set:
                   id: sleep_timer_timestamp
                   value: 0
+  - platform: template
+    id: clock_on_display
+    name: "Clock on display"
+    optimistic: true
+    restore_mode: ALWAYS_ON
+    entity_category: config
 
 display:
   - platform: ssd1306_i2c
@@ -1103,14 +1109,17 @@ display:
           strftime(seconds, sizeof(seconds), "%S", localtime(&currentTime));
           int shouldBlink = atoi(seconds) % 2;
           bool is_night_mode = !id(time_sunrise);
+          bool showClock = id(clock_on_display).state;
 
           auto index = id(display_mode).active_index();
           int displayMode = 0;
           if (index.has_value()) {
             if (index.value() == 1 && is_night_mode) {
+              //minimum night only
               displayMode = 1;
             }
             else if (index.value() == 2) {
+              //minimum
               displayMode = 2;
             }
           }
@@ -1122,7 +1131,6 @@ display:
             timeFont51 = id(robotothin51);
             timeFont20 = id(robotothin20);
           }
-
 
           if (!is_night_mode) {
             alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
@@ -1245,23 +1253,25 @@ display:
           }
           //end statusbar
 
-          //the font will be placed too high by default
-          int fontMarginBottomCorrection = 10;
+          if (showClock) {
+            //the font will be placed too high by default
+            int fontMarginBottomCorrection = 10;
 
-          displayString = ":";
-          int timeY = it.get_height();
-          timeY = (timeY + fontMarginBottomCorrection);
-          it.get_text_bounds(0, 0, displayString.c_str(), timeFont51, TextAlign::TOP_CENTER, &calculated_x, &calculated_y, &calculated_width, &calculated_height); //calculate second indicator width
+            displayString = ":";
+            int timeY = it.get_height();
+            timeY = (timeY + fontMarginBottomCorrection);
+            it.get_text_bounds(0, 0, displayString.c_str(), timeFont51, TextAlign::TOP_CENTER, &calculated_x, &calculated_y, &calculated_width, &calculated_height); //calculate second indicator width
 
-          if(!id(time_sync_done)) {
-            it.print(it.get_width()/2, timeY, timeFont51, TextAlign::BOTTOM_CENTER, ".....");
-          }
-          else {
-            it.strftime((it.get_width()/2)-(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_RIGHT, "%H", time);
-            if((displayMode == 1 || displayMode == 2) || shouldBlink) {
-              it.printf((it.get_width()/2), timeY, timeFont51, TextAlign::BOTTOM_CENTER, ":");
+            if(!id(time_sync_done)) {
+              it.print(it.get_width()/2, timeY, timeFont51, TextAlign::BOTTOM_CENTER, ".....");
             }
-            it.strftime((it.get_width()/2)+(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_LEFT, "%M", time);
+            else {
+              it.strftime((it.get_width()/2)-(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_RIGHT, "%H", time);
+              if((displayMode == 1 || displayMode == 2) || shouldBlink) {
+                it.printf((it.get_width()/2), timeY, timeFont51, TextAlign::BOTTOM_CENTER, ":");
+              }
+              it.strftime((it.get_width()/2)+(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_LEFT, "%M", time);
+            }
           }
 
           id(current_page_id) = 1;

@@ -23,11 +23,12 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 * Customizable snooze timer.
 * Online radio streams.
 * Decent sound.
+* Ability to hide the clock
 
 ## Requirements
 * < €25,-
 * 3d printer (not included in the price)
-* ESP32 devkit 1 ~ €5,-
+* ESP32-S3-N16R8 (https://nl.aliexpress.com/item/1005006418608267.html) ~ €6,-
 * Oled screen
   - [SH1106](https://nl.aliexpress.com/item/1005007253095259.html) (128x64) ~ €2,50
   - [SH1107](https://nl.aliexpress.com/item/1005005313150711.html) (128x128) ~ €6,-
@@ -40,12 +41,13 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 * Glue
 
 ## Optional
+
 * A bit of soldering is not required, but the ground has to be shared so it is nice to solder that one. Depending on your rotary button, you maybe also need to do a little bit of soldering
 * Design a fit for your speaker, or glue the speaker to the case
 
 ## Installation
 
-3d print [these](https://www.thingiverse.com/thing:6948471) files. There is an example for the speaker. You can design your own speaker holder.
+3d print [these](https://www.thingiverse.com/thing:7091731) files.
 
 Connect all dupont cables corresponding the schema's below:
 
@@ -53,28 +55,28 @@ Connect all dupont cables corresponding the schema's below:
 | --------------- | ------ |
 | VCC             | 3v     |
 | GND             | GND    |
-| SCL             | GPIO23 |
-| SDA             | GPIO18 |
+| SCL             | GPIO47 |
+| SDA             | GPIO48 |
 
 | Rotary Button | ESP32  |
 | ------------- | ------ |
-| A             | GPIO26 |
-| B             | GPIO25 |
+| A             | GPIO9  |
+| B             | GPIO10 |
 | C             | GND    |
 | D             | GND    |
-| E             | GPIO27 |
+| E             | GPIO8  |
 
 | MAX98357a | ESP32  |
 | --------- | ------ |
-| LRC       | GPIO33 |
-| BLCK      | GPIO22 |
-| DIN       | GPIO19 |
+| LRC       | GPIO3  |
+| BLCK      | GPIO1  |
+| DIN       | GPIO2  |
 | GND       | GND    |
 | Vin       | 5v     |
 
 | Flat head button | ESP32  |
 | ---------------- | ------ |
-| Switch           | GPIO21 |
+| Switch           | GPIO4  |
 | GND              | GND    |
 
 Include the config below in your YAML:
@@ -85,6 +87,15 @@ substitutions:
   display_rotation: "270" #use 0 for SH1106
   sun_latitude: 52.37°
   sun_longitude: 4.89°
+  i2c_sda: GPIO48
+  i2c_scl: GPIO47
+  i2s_lrclk_pin: GPIO3
+  i2s_bclk_pin: GPIO1
+  i2s_dout_pin: GPIO2
+  pin_a: GPIO9
+  pin_b: GPIO10
+  alarm_off_button_pin: GPIO4
+  rotary_button_pin: GPIO8
 
 packages:
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
@@ -130,6 +141,13 @@ esphome:
                   media_player.is_playing :
               - media_player.stop:
               - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
+  platformio_options: #PSRAM stuff
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.arduino.memory_type: qio_opi
+
+psram:
+  mode: octal
+  speed: 80MHz
 ```
 
 Save the `fonts` folder into your ESPHome folder. The folder needs to be placed in the same directory as your YAML.
@@ -224,6 +242,7 @@ Use the rotary button to select the correct option, single click the rotary butt
 A few options are not (yet) available on the alarm self:
 * Snooze duration
 * Display Mode
+* Hide clock
 
 Use Home Assistant to configure these options.
 
@@ -251,9 +270,14 @@ The `Minimum night only` will have a smaller font for less light. The wifi icon 
 
 ## Changelog
 
+### 2025.7.14.1
+ - ESP PSRAM implementation
+ - Hide clock feature
+
 ### 2025.4.24.1
  - Time handling improvements
  - Solved issue #1
+ - PIN assignment not hardcoded anymore
 
 ### 2025.4.8.1
  - Alarms are now more resillient, it runs as soon as it is missed
