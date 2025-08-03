@@ -1098,6 +1098,9 @@ switch:
       - wait_until:
           lambda: 'return (id(time_sync_done) == true);'
       - switch.turn_on: display_enabled
+      - select.set:
+          id: display_mode
+          option: ${alarm_display_mode}      
       - lambda: |-
           const esphome::optional<std::string> url = id(media_player_alarm).make_call().get_media_url();
           if (url.has_value()) {
