@@ -483,6 +483,11 @@ sensor:
     on_anticlockwise:
       then:
       - if:
+          condition:
+            switch.is_on: enable_display_on_interaction
+          then:
+            - switch.turn_on: display_enabled
+      - if:
             condition:
               lambda: |-
                 if (id(current_page_id) == 1 && id(alarm_on).state) {
@@ -521,6 +526,11 @@ sensor:
                         clockwise: false
     on_clockwise:
       then:
+        - if:
+            condition:
+              switch.is_on: enable_display_on_interaction
+            then:
+              - switch.turn_on: display_enabled
         - if:
             condition:
               lambda: |-
@@ -575,6 +585,11 @@ binary_sensor:
         then:
           - if:
               condition:
+                switch.is_on: enable_display_on_interaction
+              then:
+                - switch.turn_on: display_enabled
+          - if:
+              condition:
                 or:
                   - switch.is_on: alarm_on
                   - switch.is_on: snooze_on
@@ -593,6 +608,11 @@ binary_sensor:
         - ON for at most 1s
         - OFF for at least 0.5s
         then:
+          - if:
+              condition:
+                switch.is_on: enable_display_on_interaction
+              then:
+                - switch.turn_on: display_enabled
           - if:
               condition:
                 and:
@@ -646,6 +666,11 @@ binary_sensor:
           - logger.log: "Long Click"
           - if:
               condition:
+                switch.is_on: enable_display_on_interaction
+              then:
+                - switch.turn_on: display_enabled
+          - if:
+              condition:
                 display.is_displaying_page: page1
               then:
                 - display.page.show: page11
@@ -660,6 +685,11 @@ binary_sensor:
         - OFF for at least 0.5s
         then:
           - logger.log: "Triple Click"
+          - if:
+              condition:
+                switch.is_on: enable_display_on_interaction
+              then:
+                - switch.turn_on: display_enabled
           - if:
               condition:
                 display.is_displaying_page: page1
@@ -702,6 +732,11 @@ binary_sensor:
         - OFF for at least 0.5s
         then:
           - logger.log: "Double Click"
+          - if:
+              condition:
+                switch.is_on: enable_display_on_interaction
+              then:
+                - switch.turn_on: display_enabled
           - if:
               condition:
                 display.is_displaying_page: page1
@@ -763,6 +798,11 @@ binary_sensor:
         - OFF for at least 0.5s
         then:
           - logger.log: "Single Click"
+          - if:
+              condition:
+                switch.is_on: enable_display_on_interaction
+              then:
+                - switch.turn_on: display_enabled
           - lambda: |-
               int current_page_value = id(current_page_id);
               if (current_page_value == 1) { //clock page
@@ -897,6 +937,16 @@ select:
 
 switch:
   - platform: template
+    id: display_enabled
+    name: "Display enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
+    id: enable_display_on_interaction
+    name: "Enable Display on interaction"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
     id: alarm_enabled
     name: "Alarm enabled"
     optimistic: true
@@ -1028,6 +1078,7 @@ switch:
       then:
       - wait_until:
           lambda: 'return (id(time_sync_done) == true);'
+      - switch.turn_on: display_enabled
       - lambda: |-
           const esphome::optional<std::string> url = id(media_player_alarm).make_call().get_media_url();
           if (url.has_value()) {
@@ -1104,6 +1155,11 @@ display:
     pages:
       - id: page1 #clock page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1126,7 +1182,7 @@ display:
             else if (index.value() == 3) {
               //minimum day contrast
               displayMode = 3;
-            }
+            }            
           }
 
           //determine font
@@ -1282,6 +1338,11 @@ display:
           id(current_page_id) = 1;
       - id: page2 #Alarm clock setting page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1331,6 +1392,11 @@ display:
           id(current_page_id) = 2;
       - id: page3 #HA 1 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           //https://gist.github.com/alvesvaren/767d9585f0ecbef18ef1c7c0492c4332
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
@@ -1398,6 +1464,11 @@ display:
           id(current_page_id) = 3;
       - id: page4 #HA 2 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1464,6 +1535,11 @@ display:
           id(current_page_id) = 4;
       - id: page5 #HA 3 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1530,6 +1606,11 @@ display:
           id(current_page_id) = 5;
       - id: page6 #HA 4 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1596,6 +1677,11 @@ display:
           id(current_page_id) = 6;
       - id: page7 #Sleep timer
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1620,6 +1706,11 @@ display:
           id(current_page_id) = 7;
       - id: page8 #Radio selector
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1650,6 +1741,11 @@ display:
           id(current_page_id) = 8;
       - id: page10 #Contrast page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           bool is_night_mode = !id(time_sunrise);
 
           if (!is_night_mode) {
@@ -1673,6 +1769,11 @@ display:
           id(current_page_id) = 10;
       - id: page11 #Restart page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           it.printf(it.get_width()/2, 0, id(robotomedium20), TextAlign::TOP_CENTER, "Restart?");
           if (id(rotate_switch_single) == 0) { // check active
             it.printf(it.get_width()/2, it.get_height(), id(robotomedium40), TextAlign::BOTTOM_RIGHT, "\U000F0C52");
@@ -1686,6 +1787,11 @@ display:
           id(current_page_id) = 11;
       - id: page12 #Volume page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           it.printf(0, (it.get_height()/2), id(robotomedium20), TextAlign::CENTER_LEFT, "\U000F057E");
           int value = id(alarm_volume).state;
           it.printf(it.get_width()/2, (it.get_height()/2), id(robotomedium40), TextAlign::CENTER, "%i", value);
