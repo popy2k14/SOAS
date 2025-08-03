@@ -96,6 +96,8 @@ substitutions:
   pin_b: GPIO10
   alarm_off_button_pin: GPIO4
   rotary_button_pin: GPIO8
+  alarm_off_button_single_click_time: 1s
+  alarm_off_button_long_click_time: 2s
 
 packages:
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
