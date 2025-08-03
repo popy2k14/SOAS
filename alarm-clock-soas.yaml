@@ -580,7 +580,7 @@ binary_sensor:
     name: "Alarm off"
     on_multi_click:
       - timing: #long click
-        - ON for at least 2s
+        - ON for at least ${alarm_off_button_long_click_time}
         - OFF for at least 0.5s
         then:
           - if:
@@ -605,7 +605,7 @@ binary_sensor:
                     then:
                       - switch.turn_on: sleep_timer_on
       - timing: #single click
-        - ON for at most 1s
+        - ON for at most ${alarm_off_button_single_click_time}
         - OFF for at least 0.5s
         then:
           - if:
