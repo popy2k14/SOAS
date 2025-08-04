@@ -590,70 +590,76 @@ binary_sensor:
         then:
           - if:
               condition:
-                switch.is_on: enable_display_on_interaction
+                and:
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
               then:
                 - switch.turn_on: display_enabled
-          - if:
-              condition:
-                or:
-                  - switch.is_on: alarm_on
-                  - switch.is_on: snooze_on
-              then:
-                - switch.turn_off: alarm_on
-                - switch.turn_off: snooze_on
-                - switch.turn_off: sleep_timer_on
               else:
-                - switch.turn_on: alarm_on
                 - if:
                     condition:
-                      - switch.is_on: sleep_timer_enabled
+                      or:
+                        - switch.is_on: alarm_on
+                        - switch.is_on: snooze_on
                     then:
-                      - switch.turn_on: sleep_timer_on
+                      - switch.turn_off: alarm_on
+                      - switch.turn_off: snooze_on
+                      - switch.turn_off: sleep_timer_on
+                    else:
+                      - switch.turn_on: alarm_on
+                      - if:
+                          condition:
+                            - switch.is_on: sleep_timer_enabled
+                          then:
+                            - switch.turn_on: sleep_timer_on  
       - timing: #single click
         - ON for at most ${alarm_off_button_single_click_time}
         - OFF for at least 0.5s
         then:
           - if:
               condition:
-                switch.is_on: enable_display_on_interaction
+                and:
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
               then:
                 - switch.turn_on: display_enabled
-          - if:
-              condition:
-                and:
-                  - switch.is_on: alarm_on
-                  - switch.is_off: snooze_on
-                  - switch.is_off: sleep_timer_on
-              then:
-                - switch.turn_on: snooze_on
               else:
                 - if:
                     condition:
-                      - switch.is_on: snooze_on
+                      and:
+                        - switch.is_on: alarm_on
+                        - switch.is_off: snooze_on
+                        - switch.is_off: sleep_timer_on
                     then:
-                      - switch.turn_off: snooze_on
+                      - switch.turn_on: snooze_on
                     else:
                       - if:
                           condition:
-                            - switch.is_on: sleep_timer_on
+                            - switch.is_on: snooze_on
                           then:
-                            - switch.turn_off: sleep_timer_on
-                            - switch.turn_off: alarm_on
+                            - switch.turn_off: snooze_on
                           else:
                             - if:
                                 condition:
-                                  and:
-                                    - switch.is_off: alarm_on
-                                    - switch.is_on: sleep_timer_enabled
+                                  - switch.is_on: sleep_timer_on
                                 then:
-                                  - switch.turn_on: alarm_on
-                                  - switch.turn_on: sleep_timer_on
+                                  - switch.turn_off: sleep_timer_on
+                                  - switch.turn_off: alarm_on
                                 else:
                                   - if:
                                       condition:
-                                        - switch.is_off: alarm_on
+                                        and:
+                                          - switch.is_off: alarm_on
+                                          - switch.is_on: sleep_timer_enabled
                                       then:
                                         - switch.turn_on: alarm_on
+                                        - switch.turn_on: sleep_timer_on
+                                      else:
+                                        - if:
+                                            condition:
+                                              - switch.is_off: alarm_on
+                                            then:
+                                              - switch.turn_on: alarm_on
   - platform: gpio
     pin:
       number: ${rotary_button_pin}
