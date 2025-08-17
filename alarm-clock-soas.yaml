@@ -1,3 +1,40 @@
+esphome:
+  on_boot:
+    - priority: 600
+      then: #clicking workaround
+        - if:
+            condition:
+              - switch.is_on: alarm_on
+            then: #restore playback
+              - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
+              - wait_until:
+                  lambda:
+                    return (id(time_sync_done) == true);
+              - switch.turn_on: alarm_on
+
+logger:
+  on_message:
+    level: ERROR
+    then:
+      - lambda: |-
+          //catch error thrown by speaker_media_player
+          if (tag == "speaker_media_player" && id(media_player_alarm).state == 2 && (id(alarm_on).state || id(music_on).state)) { //MEDIA_PLAYER_STATE_NONE = 0 , MEDIA_PLAYER_STATE_IDLE = 1 , MEDIA_PLAYER_STATE_PLAYING = 2 , MEDIA_PLAYER_STATE_PAUSED = 3 ,  MEDIA_PLAYER_STATE_ANNOUNCING = 4
+            id(media_player_stopped) = id(media_player_stopped) + 1;
+            int maxCounter = 4;
+            if (id(media_player_stopped) > maxCounter) {
+              //id(debug_logger).publish_state("Level: " + to_string(level) + ". Tag: " + tag + ". Message:" + message);
+              if (id(alarm_on).state) {
+                id(alarm_on_local).turn_on();
+              }
+              else if (id(music_on).state) {
+                id(music_on).turn_off(); //switching music off, it does not work
+              }
+            }
+          }
+          else if (tag == "speaker_media_player" && id(media_player_alarm).state == 4 && id(alarm_on).state) { //error on announcement
+            //id(debug_logger).publish_state("announcing Level: " + to_string(level) + ". Tag: " + tag + ". Message:" + message);
+          }
+
 i2c:
   sda: ${i2c_sda}
   scl: ${i2c_scl}
@@ -8,13 +45,50 @@ i2s_audio:
     i2s_lrclk_pin: ${i2s_lrclk_pin}
     i2s_bclk_pin: ${i2s_bclk_pin}
 
-media_player:
-  - platform: i2s_audio
-    name: Media player alarm
-    id: media_player_alarm
+speaker:
+  - id: speaker_id
+    platform: i2s_audio
     dac_type: external
     i2s_dout_pin: ${i2s_dout_pin}
-    mode: mono
+    sample_rate: 48000
+  - id: mixer_speaker_id
+    platform: mixer
+    output_speaker: speaker_id
+    source_speakers:
+      - id: announcement_spk_mixer_input
+      - id: media_spk_mixer_input
+  - id: media_spk_resampling_input
+    platform: resampler
+    output_speaker: media_spk_mixer_input
+  - id: announcement_spk_resampling_input
+    platform: resampler
+    output_speaker: announcement_spk_mixer_input
+
+media_player:
+  - id: media_player_alarm
+    platform: speaker
+    name: Media player alarm
+    media_pipeline:
+        speaker: media_spk_resampling_input
+        num_channels: 2
+    announcement_pipeline:
+        speaker: announcement_spk_resampling_input
+        num_channels: 1
+    on_announcement:
+      - mixer_speaker.apply_ducking:
+          id: media_spk_mixer_input
+          decibel_reduction: 20
+          duration: 0.0s
+      - wait_until:
+          not:
+            media_player.is_announcing:
+      - mixer_speaker.apply_ducking:
+          id: media_spk_mixer_input
+          decibel_reduction: 0
+          duration: 1.0s
+    files:
+      - id: alarm_sound
+        file: ${alarm_file}
     on_play:
       - logger.log: "Playback started!"
     on_pause:
@@ -23,8 +97,8 @@ media_player:
       - logger.log: "Playback finished!"
 
 font:
-  - file: fonts/Roboto-Medium.ttf
-    id: robotomedium40
+  - id: robotomedium40
+    file: fonts/Roboto-Medium.ttf
     size: 40
     <<: &extras
       extras:
@@ -56,33 +130,34 @@ font:
             "\U000F0A13", # SquareMedium
             "\U000F0763", # SquareOutline
             "\U000F057E", # VolumeHigh
+            "\U000F0387", # MusicNote
           ]
-  - file: fonts/Roboto-Medium.ttf
-    id: robotomedium51
+  - id: robotomedium51
+    file: fonts/Roboto-Medium.ttf
     size: 51
     <<: *extras
-  - file: fonts/Roboto-Medium.ttf
-    id: robotomedium30
+  - id: robotomedium30
+    file: fonts/Roboto-Medium.ttf
     size: 30
     <<: *extras
-  - file: fonts/Roboto-Medium.ttf
-    id: robotomedium20
+  - id: robotomedium20
+    file: fonts/Roboto-Medium.ttf
     size: 20
     <<: *extras
-  - file: fonts/Roboto-Medium.ttf
-    id: robotomedium15
+  - id: robotomedium15
+    file: fonts/Roboto-Medium.ttf
     size: 15
     <<: *extras
-  - file: fonts/roboto-thin.ttf
-    id: robotothin51
+  - id: robotothin51
+    file: fonts/roboto-thin.ttf
     size: 51
     <<: *extras
-  - file: fonts/roboto-thin.ttf
-    id: robotothin20
+  - id: robotothin20
+    file: fonts/roboto-thin.ttf
     size: 20
     <<: *extras
-  - file: fonts/roboto-thin.ttf
-    id: robotothin15
+  - id: robotothin15
+    file: fonts/roboto-thin.ttf
     size: 15
     <<: *extras
 
@@ -112,6 +187,12 @@ globals:
   - id: snooze_timestamp
     type: int
     restore_value: yes
+    initial_value: '0'
+  - id: media_player_stopped
+    type: int
+    initial_value: '0'
+  - id: media_player_watchdog_count
+    type: int
     initial_value: '0'
 
 interval:
@@ -144,13 +225,17 @@ interval:
                             id(api_connected) = false;
 
 time:
-  - platform: sntp
-    id: ntp
+  - id: ntp
+    platform: sntp
     on_time_sync:
       then:
         lambda: |-
           id(time_sync_done) = true;
     on_time:
+      - seconds: /5
+        minutes: "*"
+        then:
+          - script.execute: media_player_watchdog
       - seconds: 0,30
         minutes: "*"
         then:
@@ -172,8 +257,8 @@ sun:
   longitude: ${sun_longitude}
 
 number:
-  - platform: template
-    name: Screen contrast day
+  - name: Screen contrast day
+    platform: template
     optimistic: true
     id: screen_contrast_day
     initial_value: 0
@@ -182,8 +267,8 @@ number:
     max_value: 100
     step: 1
     mode: slider
-  - platform: template
-    name: Screen contrast night
+  - name: Screen contrast night
+    platform: template
     optimistic: true
     id: screen_contrast_night
     initial_value: 0
@@ -192,9 +277,9 @@ number:
     max_value: 100
     step: 1
     mode: slider
-  - platform: template
+  - name: "Alarm hour"
     id: alarm_hour
-    name: "Alarm hour"
+    platform: template
     entity_category: config
     optimistic: true
     restore_value: true
@@ -208,8 +293,8 @@ number:
           id: set_ha_0_trigger_time_script
       - script.execute:
           id: set_alarm_last_off
-  - platform: template
-    name: "Alarm minute"
+  - name: "Alarm minute"
+    platform: template
     id: alarm_minute
     entity_category: config
     optimistic: true
@@ -224,8 +309,8 @@ number:
           id: set_ha_0_trigger_time_script
       - script.execute:
           id: set_alarm_last_off
-  - platform: template
-    name: "Snooze duration"
+  - name: "Snooze duration"
+    platform: template
     id: snooze_duration
     entity_category: config
     optimistic: true
@@ -235,8 +320,8 @@ number:
     max_value: 99
     step: 1
     mode: slider
-  - platform: template
-    name: "Home Assistant 1 pre minute"
+  - name: "Home Assistant 1 pre minute"
+    platform: template
     id: ha_1_pre_minute
     entity_category: config
     optimistic: true
@@ -249,8 +334,8 @@ number:
     on_value:
       - script.execute:
           id: set_ha_1_trigger_time_script
-  - platform: template
-    name: "Home Assistant 1 minute"
+  - name: "Home Assistant 1 minute"
+    platform: template
     id: ha_1_minute
     entity_category: config
     optimistic: true
@@ -260,8 +345,8 @@ number:
     max_value: 59
     step: 1
     internal: true
-  - platform: template
-    name: "Home Assistant 1 hour"
+  - name: "Home Assistant 1 hour"
+    platform: template
     id: ha_1_hour
     entity_category: config
     optimistic: true
@@ -271,8 +356,8 @@ number:
     max_value: 23
     step: 1
     internal: true
-  - platform: template
-    name: "Home Assistant 2 pre minute"
+  - name: "Home Assistant 2 pre minute"
+    platform: template
     id: ha_2_pre_minute
     entity_category: config
     optimistic: true
@@ -285,8 +370,8 @@ number:
     on_value:
       - script.execute:
           id: set_ha_2_trigger_time_script
-  - platform: template
-    name: "Home Assistant 2 minute"
+  - name: "Home Assistant 2 minute"
+    platform: template
     id: ha_2_minute
     entity_category: config
     optimistic: true
@@ -296,8 +381,8 @@ number:
     max_value: 59
     step: 1
     internal: true
-  - platform: template
-    name: "Home Assistant 2 hour"
+  - name: "Home Assistant 2 hour"
+    platform: template
     id: ha_2_hour
     entity_category: config
     optimistic: true
@@ -307,8 +392,8 @@ number:
     max_value: 23
     step: 1
     internal: true
-  - platform: template
-    name: "Home Assistant 3 pre minute"
+  - name: "Home Assistant 3 pre minute"
+    platform: template
     id: ha_3_pre_minute
     entity_category: config
     optimistic: true
@@ -321,8 +406,8 @@ number:
     on_value:
       - script.execute:
           id: set_ha_3_trigger_time_script
-  - platform: template
-    name: "Home Assistant 3 minute"
+  - name: "Home Assistant 3 minute"
+    platform: template
     id: ha_3_minute
     entity_category: config
     optimistic: true
@@ -332,8 +417,8 @@ number:
     max_value: 59
     step: 1
     internal: true
-  - platform: template
-    name: "Home Assistant 3 hour"
+  - name: "Home Assistant 3 hour"
+    platform: template
     id: ha_3_hour
     entity_category: config
     optimistic: true
@@ -343,8 +428,8 @@ number:
     max_value: 23
     step: 1
     internal: true
-  - platform: template
-    name: "Home Assistant 4 pre minute"
+  - name: "Home Assistant 4 pre minute"
+    platform: template
     id: ha_4_pre_minute
     entity_category: config
     optimistic: true
@@ -357,8 +442,8 @@ number:
     on_value:
       - script.execute:
           id: set_ha_4_trigger_time_script
-  - platform: template
-    name: "Home Assistant 4 minute"
+  - name: "Home Assistant 4 minute"
+    platform: template
     id: ha_4_minute
     entity_category: config
     optimistic: true
@@ -368,8 +453,8 @@ number:
     max_value: 59
     step: 1
     internal: true
-  - platform: template
-    name: "Home Assistant 4 hour"
+  - name: "Home Assistant 4 hour"
+    platform: template
     id: ha_4_hour
     entity_category: config
     optimistic: true
@@ -379,8 +464,8 @@ number:
     max_value: 23
     step: 1
     internal: true
-  - platform: template
-    name: "Alarm volume"
+  - name: "Alarm volume"
+    platform: template
     id: alarm_volume
     entity_category: config
     optimistic: true
@@ -392,8 +477,8 @@ number:
     mode: slider
     on_value:
       - media_player.volume_set: !lambda "return (x/100);"
-  - platform: template
-    name: "Sleep timer duration"
+  - name: "Sleep timer duration"
+    platform: template
     id: sleep_timer_duration
     entity_category: config
     optimistic: true
@@ -403,8 +488,8 @@ number:
     max_value: 180
     step: 5
     mode: slider
-  - platform: template
-    name: "Sleep timer timestamp"
+  - name: "Sleep timer timestamp"
+    platform: template
     id: sleep_timer_timestamp
     entity_category: config
     optimistic: true
@@ -425,10 +510,32 @@ number:
                   id(sleep_timer_time).publish_state(sleepTimer);
     step: 1
     internal: true
+  - name: "Alarm volume increase"
+    platform: template
+    id: alarm_volume_increase
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 100
+    step: 1
+    mode: slider
+  - name: "Alarm volume increase duration"
+    platform: template
+    id: alarm_volume_increase_duration
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 300
+    step: 30
+    mode: slider
 
 text_sensor:
-  - platform: template
-    name: "Sleep timer time"
+  - name: "Sleep timer time"
+    platform: template
     id: sleep_timer_time
     lambda: |-
       time_t sleepTimerTimestampTS = id(sleep_timer_timestamp).state;
@@ -436,8 +543,8 @@ text_sensor:
       strftime(sleepTSDisplay, sizeof(sleepTSDisplay), "%H:%M", localtime(&sleepTimerTimestampTS));
       return esphome::str_sprintf(sleepTSDisplay);
     update_interval: 60s
-  - platform: template
-    name: "Snooze time"
+  - name: "Snooze time"
+    platform: template
     id: snooze_time
     lambda: |-
       time_t snoozeTimestampTS = id(snooze_timestamp);
@@ -445,35 +552,45 @@ text_sensor:
       strftime(snoozeTSDisplay, sizeof(snoozeTSDisplay), "%H:%M", localtime(&snoozeTimestampTS));
       return esphome::str_sprintf(snoozeTSDisplay);
     update_interval: 60s
-  - platform: template
-    name: "Home Assistant 1 time"
+  - name: "Home Assistant 1 time"
+    platform: template
     id: ha_1_time
-  - platform: template
-    name: "Home Assistant 2 time"
+  - name: "Home Assistant 2 time"
+    platform: template
     id: ha_2_time
-  - platform: template
-    name: "Home Assistant 3 time"
+  - name: "Home Assistant 3 time"
+    platform: template
     id: ha_3_time
-  - platform: template
-    name: "Home Assistant 4 time"
+  - name: "Home Assistant 4 time"
+    platform: template
     id: ha_4_time
+  # - name: "Debug logger"
+  #   platform: template
+  #   id: debug_logger
+  #   lambda: |-
+  #     return {" "};
+  #   update_interval: 60s
+  - name: "Alarm on timestamp"
+    platform: template
+    id: alarm_on_timestamp
+    internal: true
 
 sensor:
-  - platform: wifi_signal
-    name: "WiFi Signal Sensor"
+  - name: "WiFi Signal Sensor"
+    platform: wifi_signal
     id: wifi_signal_db
     update_interval: 60s
-  - platform: copy # Reports the WiFi signal strength in %
+  - name: "WiFi Signal Percent"
+    platform: copy # Reports the WiFi signal strength in %
     source_id: wifi_signal_db
     id: wifi_signal_percent
-    name: "WiFi Signal Percent"
     filters:
       - lambda: return min(max(2 * (x + 100.0), 0.0), 100.0);
     unit_of_measurement: "Signal %"
     entity_category: "diagnostic"
     device_class: ""
-  - platform: rotary_encoder
-    name: "Rotary Encoder"
+  - name: "Rotary Encoder"
+    platform: rotary_encoder
     pin_a:
       number: ${pin_a}
       mode: INPUT_PULLUP
@@ -483,48 +600,48 @@ sensor:
     on_anticlockwise:
       then:
       - if:
-            condition:
-              lambda: |-
-                if (id(current_page_id) == 1 && id(alarm_on).state) {
-                  ESP_LOGD("rotary_encoder", "alarm is on, show volume");
-                  return true;
-                }
-                return false;
-            then:
-              - display.page.show: page12
-              - script.execute:
-                  id: reset_page_script
-            else: #browse all pages
-              - if:
-                  condition:
-                    lambda: |-
-                      if (id(rotate_switch_single) == 0 && id(rotate_switch_double) == 0 && id(current_page_id) < 9) {
-                        ESP_LOGD("rotary_encoder", "anticlockwise");
-                        return true;
-                      }
-                      return false;
-                  then:
-                    - if: #dont show special pages
-                        condition:
-                          display.is_displaying_page:
-                            id: alarmdisplay
-                            page_id: page1
-                        then:
-                          - display.page.show: page8
-                        else:
-                          - display.page.show_previous: alarmdisplay
-                    - script.execute:
-                        id: reset_page_script
-                  else: #edit items on page
-                    - script.execute:
-                        id: rotary_encoder_script
-                        clockwise: false
+          condition:
+            lambda: |-
+              if (id(current_page_id) == 1 && (id(alarm_on).state || id(music_on).state)) {
+                ESP_LOGD("rotary_encoder", "alarm is on, show volume");
+                return true;
+              }
+              return false;
+          then:
+            - display.page.show: page12
+            - script.execute:
+                id: reset_page_script
+          else: #browse all pages
+            - if:
+                condition:
+                  lambda: |-
+                    if (id(rotate_switch_single) == 0 && id(rotate_switch_double) == 0 && id(current_page_id) < 9) {
+                      ESP_LOGD("rotary_encoder", "anticlockwise");
+                      return true;
+                    }
+                    return false;
+                then:
+                  - if: #dont show special pages
+                      condition:
+                        display.is_displaying_page:
+                          id: alarmdisplay
+                          page_id: page1
+                      then:
+                        - display.page.show: page8
+                      else:
+                        - display.page.show_previous: alarmdisplay
+                  - script.execute:
+                      id: reset_page_script
+                else: #edit items on page
+                  - script.execute:
+                      id: rotary_encoder_script
+                      clockwise: false
     on_clockwise:
       then:
         - if:
             condition:
               lambda: |-
-                if (id(current_page_id) == 1 && id(alarm_on).state) {
+                if (id(current_page_id) == 1 && (id(alarm_on).state || id(music_on).state)) {
                   ESP_LOGD("rotary_encoder", "alarm is on, show volume");
                   return true;
                 }
@@ -560,81 +677,46 @@ sensor:
                         clockwise: true
 
 binary_sensor:
-  - platform: gpio
+  - name: "Alarm off"
+    platform: gpio
     pin:
       number: ${alarm_off_button_pin}
       mode:
         input: true
         pullup: true
       inverted: true
-    name: "Alarm off"
     on_multi_click:
-      - timing: #long click
-        - ON for at least 2s
-        - OFF for at least 0.5s
-        then:
-          - if:
-              condition:
-                or:
-                  - switch.is_on: alarm_on
-                  - switch.is_on: snooze_on
-              then:
-                - switch.turn_off: alarm_on
-                - switch.turn_off: snooze_on
-                - switch.turn_off: sleep_timer_on
-              else:
-                - switch.turn_on: alarm_on
-                - if:
-                    condition:
-                      - switch.is_on: sleep_timer_enabled
-                    then:
-                      - switch.turn_on: sleep_timer_on
       - timing: #single click
         - ON for at most 1s
         - OFF for at least 0.5s
         then:
-          - if:
-              condition:
-                and:
-                  - switch.is_on: alarm_on
-                  - switch.is_off: snooze_on
-                  - switch.is_off: sleep_timer_on
-              then:
-                - switch.turn_on: snooze_on
-              else:
-                - if:
-                    condition:
-                      - switch.is_on: snooze_on
-                    then:
-                      - switch.turn_off: snooze_on
-                    else:
-                      - if:
-                          condition:
-                            - switch.is_on: sleep_timer_on
-                          then:
-                            - switch.turn_off: sleep_timer_on
-                            - switch.turn_off: alarm_on
-                          else:
-                            - if:
-                                condition:
-                                  and:
-                                    - switch.is_off: alarm_on
-                                    - switch.is_on: sleep_timer_enabled
-                                then:
-                                  - switch.turn_on: alarm_on
-                                  - switch.turn_on: sleep_timer_on
-                                else:
-                                  - if:
-                                      condition:
-                                        - switch.is_off: alarm_on
-                                      then:
-                                        - switch.turn_on: alarm_on
-  - platform: gpio
+          - lambda: |-
+              if (id(alarm_on).state && !id(snooze_on).state) {
+                id(snooze_on).turn_on();
+              }
+              else if (id(snooze_on).state) {
+                id(snooze_on).turn_off();
+              }
+              else if (id(sleep_timer_on).state) {
+                id(sleep_timer_on).turn_off();
+                id(music_on).turn_off();
+              }
+              else if (!id(alarm_on).state && id(sleep_timer_enabled).state) {
+                id(music_on).turn_on();
+                id(sleep_timer_on).turn_on();
+              }
+              else if (!id(music_on).state) {
+                id(music_on).turn_on();
+              }
+              else if (id(music_on).state) {
+                id(music_on).turn_off();
+              }
+  - name: "Rotary Button"
+    platform: gpio
     pin:
       number: ${rotary_button_pin}
       mode: INPUT_PULLUP
       inverted: true
-    name: "Rotary Button"
     id: magic_button_board_button
     on_release:
       - logger.log: "Released"
@@ -820,10 +902,10 @@ binary_sensor:
                 value += 1;
                 if (value > 1) {
                   value = 0;
-                  id(alarm_on).turn_off();
+                  id(music_on).turn_off();
                 }
                 else {
-                  id(alarm_on).turn_on();
+                  id(music_on).turn_on();
                 }
                 id(rotate_switch_single) = value;
                 if (value == 0) { //not in edit mode, start reset
@@ -849,8 +931,8 @@ binary_sensor:
               }
 
 select:
-  - platform: template
-    name: Alarm stream url
+  - name: Alarm stream url
+    platform: template
     id: alarm_stream_url
     optimistic: true
     restore_value: true
@@ -859,8 +941,8 @@ select:
           id: media_player_alarm
           media_url: !lambda 'return x.c_str();'
     internal: true
-  - platform: template
-    name: Alarm stream name
+  - name: Alarm stream name
+    platform: template
     id: alarm_stream_name
     optimistic: true
     restore_value: true
@@ -884,8 +966,8 @@ select:
           } else {
             ESP_LOGE("alarm_stream_name", "There is no option '%s'", x.c_str());
           }
-  - platform: template
-    name: Display mode
+  - name: Display mode
+    platform: template
     id: display_mode
     options:
      - "Full"
@@ -895,9 +977,9 @@ select:
     restore_value: true
 
 switch:
-  - platform: template
+  - name: "Alarm enabled"
+    platform: template
     id: alarm_enabled
-    name: "Alarm enabled"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
@@ -905,9 +987,9 @@ switch:
       then:
         - script.execute:
             id: set_alarm_last_off
-  - platform: template
+  - name: "Snooze on"
+    platform: template
     id: snooze_on
-    name: "Snooze on"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
@@ -933,135 +1015,207 @@ switch:
       - script.execute:
           id: set_snooze_timestamp
           timestamp: 0
-  - platform: template
+  - name: "Home assistant 1 enabled"
+    platform: template
     id: ha_1_enabled
-    name: "Home assistant 1 enabled"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home assistant 1 alarmed"
+    platform: template
     id: ha_1_alarmed
-    name: "Home assistant 1 alarmed"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home Assistant 1 on"
+    platform: template
     id: ha_1_on
-    name: "Home Assistant 1 on"
     optimistic: true
     restore_mode: ALWAYS_OFF
     on_turn_on:
       - delay: 60s
       - switch.turn_off: ha_1_on
     entity_category: config
-  - platform: template
+  - name: "Home assistant 2 enabled"
+    platform: template
     id: ha_2_enabled
-    name: "Home assistant 2 enabled"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home assistant 2 alarmed"
+    platform: template
     id: ha_2_alarmed
-    name: "Home assistant 2 alarmed"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home Assistant 2 on"
+    platform: template
     id: ha_2_on
-    name: "Home Assistant 2 on"
     optimistic: true
     restore_mode: ALWAYS_OFF
     on_turn_on:
       - delay: 60s
       - switch.turn_off: ha_2_on
     entity_category: config
-  - platform: template
+  - name: "Home assistant 3 enabled"
+    platform: template
     id: ha_3_enabled
-    name: "Home assistant 3 enabled"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home assistant 3 alarmed"
+    platform: template
     id: ha_3_alarmed
-    name: "Home assistant 3 alarmed"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home Assistant 3 on"
+    platform: template
     id: ha_3_on
-    name: "Home Assistant 3 on"
     optimistic: true
     restore_mode: ALWAYS_OFF
     on_turn_on:
       - delay: 60s
       - switch.turn_off: ha_3_on
     entity_category: config
-  - platform: template
+  - name: "Home assistant 4 enabled"
+    platform: template
     id: ha_4_enabled
-    name: "Home assistant 4 enabled"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home assistant 4 alarmed"
+    platform: template
     id: ha_4_alarmed
-    name: "Home assistant 4 alarmed"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+  - name: "Home Assistant 4 on"
+    platform: template
     id: ha_4_on
-    name: "Home Assistant 4 on"
     optimistic: true
     restore_mode: ALWAYS_OFF
     on_turn_on:
       - delay: 60s
       - switch.turn_off: ha_4_on
     entity_category: config
-  - platform: template
+  - name: "Alarm on"
+    platform: template
     id: alarm_on
-    name: "Alarm on"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
     on_turn_on:
-      then:
-      - wait_until:
-          lambda: 'return (id(time_sync_done) == true);'
-      - lambda: |-
-          const esphome::optional<std::string> url = id(media_player_alarm).make_call().get_media_url();
-          if (url.has_value()) {
-            ESP_LOGD("media_player_alarm", "Media has URL");
-          }
-          else {
-            ESP_LOGD("media_player_alarm", "Media has no URL");
-            auto mediaPlayerCall = id(media_player_alarm).make_call();
-            auto selectState = id(alarm_stream_url).state.c_str();
-            mediaPlayerCall.set_media_url(selectState);
-            mediaPlayerCall.perform();
-            ESP_LOGD("media_player_alarm", "Setting stream url %s", selectState);
-          }
+      - lambda:
+          int iTimestampForAlarm = id(ntp).now().timestamp;
+          std::string sTimestampForAlarm = to_string(iTimestampForAlarm);
+          ESP_LOGD("alarm_on", "timestampForAlarm %s", sTimestampForAlarm.c_str());
+          id(alarm_on_timestamp).publish_state(sTimestampForAlarm);
+      - if:
+          condition:
+            switch.is_on: music_on
+          then:
+            switch.turn_off: alarm_on
+          else:
+            - wait_until:
+                lambda: 'return (id(time_sync_done) == true);'
+            - script.execute:
+                id: play_url
     on_turn_off:
-      then:
-        - if:
+      - switch.turn_off: alarm_on_local
+      - if:
+          condition:
+            switch.is_off: music_on
+          then:
+            - if:
+                condition:
+                  lambda: 'return (id(time_sync_done) == true);'
+                then:
+                  - media_player.stop:
+            - script.execute:
+                id: set_alarm_last_off
+            - script.execute: #set volume back to default
+                id: set_volume
+                volume: !lambda "return id(alarm_volume).state;"
+  - name: "Alarm on local"
+    platform: template
+    id: alarm_on_local
+    optimistic: true
+    internal: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_off:
+      - mixer_speaker.apply_ducking:  # Stop ducking the media stream over 2 seconds
+          id: media_spk_mixer_input
+          decibel_reduction: 0
+          duration: 2.0s
+    on_turn_on:
+        # Duck media audio by 20 decibels instantly
+        - mixer_speaker.apply_ducking:
+            id: media_spk_mixer_input
+            decibel_reduction: 20
+            duration: 0.0s
+        - while:
             condition:
-              lambda: 'return (id(time_sync_done) == true);'
+              switch.is_on: alarm_on_local
             then:
-              - media_player.stop:
-        - script.execute:
-            id: set_alarm_last_off
-
-  - platform: restart
-    id: clock_restart_switch
-    name: "Restart"
-  - platform: template
-    id: sleep_timer_enabled
-    name: "Sleep timer enabled"
+              # Play the alarm sound as an announcement
+              - media_player.speaker.play_on_device_media_file:
+                  media_file: alarm_sound
+                  announcement: true
+              # Wait until the alarm sound starts playing
+              - wait_until:
+                  media_player.is_announcing:
+              # Wait until the alarm sound stops playing
+              - wait_until:
+                  not:
+                    media_player.is_announcing:
+  - name: "Music on"
+    platform: template
+    id: music_on
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
-  - platform: template
+    on_turn_on:
+      - if:
+          condition:
+            switch.is_on: alarm_on
+          then:
+            switch.turn_off: music_on
+          else:
+            - if: #if media player is not playing, or not announcing, then play music
+                all:
+                  - not:
+                      media_player.is_announcing:
+                  - media_player.is_idle:
+                then:
+                  - wait_until:
+                      lambda: 'return (id(time_sync_done) == true);'
+                  - logger.log: "Time sync is done, currently no playback, enabling playback"
+                  - script.execute:
+                      id: play_url
+    on_turn_off:
+      - if:
+          condition:
+            switch.is_off: alarm_on
+          then:
+            - media_player.stop:
+            - script.execute:
+                id: set_alarm_last_off
+            - script.execute: #set volume back to default
+                id: set_volume
+                volume: !lambda "return id(alarm_volume).state;"
+  - name: "Restart"
+    platform: restart
+    id: clock_restart_switch
+  - name: "Sleep timer enabled"
+    platform: template
+    id: sleep_timer_enabled
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+  - name: "Sleep timer on"
+    platform: template
     id: sleep_timer_on
-    name: "Sleep timer on"
     optimistic: true
     restore_mode: RESTORE_DEFAULT_OFF
     entity_category: config
@@ -1084,9 +1238,9 @@ switch:
               - number.set:
                   id: sleep_timer_timestamp
                   value: 0
-  - platform: template
+  - name: "Clock on display"
+    platform: template
     id: clock_on_display
-    name: "Clock on display"
     optimistic: true
     restore_mode: ALWAYS_ON
     entity_category: config
@@ -1140,12 +1294,15 @@ display:
           }
 
           //status bar
-          if (id(alarm_on).state && !id(sleep_timer_on).state) {
+          if (id(music_on).state && shouldBlink) { //music icon
+            it.printf(0, 0, id(robotomedium20), TextAlign::LEFT, "\U000F0387");
+          }
+          else if (id(alarm_on).state && !id(sleep_timer_on).state) { //alarm on
             if (shouldBlink) {
               it.printf(0, 0, id(robotomedium20), TextAlign::LEFT, "\U000F0E71");
             }
           }
-          else if (id(alarm_enabled).state) {
+          else if (id(alarm_enabled).state) { //alarm enabled
             it.printf(0, 0, id(robotomedium20), TextAlign::LEFT, "\U000F0020");
           }
 
@@ -1233,8 +1390,8 @@ display:
             it.strftime(0, (it.get_width()/2)-10, timeFont20, TextAlign::BOTTOM_LEFT, "%a", time);
             it.strftime(0, (it.get_width()/2)-10, timeFont20, TextAlign::TOP_LEFT, "%d-%m", time);
 
-            string preZeroHour = "";
-            string preZeroMinute = "";
+            std::string preZeroHour = "";
+            std::string preZeroMinute = "";
             if (id(alarm_enabled).state && !id(snooze_on).state) {
               if (id(alarm_hour).state < 10) {
                 preZeroHour = "0";
@@ -2146,7 +2303,7 @@ script:
           //get the timestamp
           int currentTimeForAlarmTimeStamp = currentTimeForAlarm;
 
-          if (!id(alarm_on).state && id(alarm_enabled).state) {
+          if (!id(alarm_on).state && id(alarm_enabled).state || id(alarm_on).state) {
             //get the midnight of today
             time_t currentTimeForAlarmMidnight = currentTimeForAlarm; //second 0 of the current minute
             int secondsFromMidnight = (iCurrentHour * 60 * 60) + (iCurrentMinute * 60) + iCurrentSecond;
@@ -2154,10 +2311,54 @@ script:
             int iCurrentTimeForAlarmMidnight = currentTimeForAlarmMidnight;
             int alarmTimeStamp = iCurrentTimeForAlarmMidnight + (iAlarmHours * 60  * 60) + (iAlarmMinutes * 60);
             int alarmOffTimeStamp = id(alarm_last_off);
-            if (alarmTimeStamp <= currentTimeForAlarmTimeStamp) { //alarm time has passed
-              if (alarmOffTimeStamp <= alarmTimeStamp) { //alarm time is after the last time alarm was set to off
-                id(alarm_on).turn_on();
-                ESP_LOGD("check_alarms", "alarm on");
+            if (!id(alarm_on).state && id(alarm_enabled).state) {
+              if (alarmTimeStamp <= currentTimeForAlarmTimeStamp) { //alarm time has passed
+                if (alarmOffTimeStamp <= alarmTimeStamp) { //alarm time is after the last time alarm was set to off
+                  id(alarm_on).turn_on();
+                  ESP_LOGD("check_alarms", "alarm on");
+                }
+              }
+            }
+            else if (id(alarm_on).state) { // increase volume with alarmVolumeIncrease if it is on for alarmVolumeIncreaseDuration seconds
+              auto aAlarmTimeStamp = parse_number<int>(id(alarm_on_timestamp).state);
+              if (aAlarmTimeStamp.has_value()) {
+                time_t tAlarmTimeStamp = aAlarmTimeStamp.value();
+                char cAlarmOnTimestampHour[5];
+                char cAlarmOnTimestampMinute[5];
+                strftime(cAlarmOnTimestampHour, sizeof(cAlarmOnTimestampHour), "%H", localtime(&tAlarmTimeStamp));
+                strftime(cAlarmOnTimestampMinute, sizeof(cAlarmOnTimestampMinute), "%M", localtime(&tAlarmTimeStamp));
+                int iAlarmOnTimestampHour = atoi(cAlarmOnTimestampHour);
+                int iAlarmOnTimestampMinute = atoi(cAlarmOnTimestampMinute);
+                alarmTimeStamp = iCurrentTimeForAlarmMidnight + (iAlarmOnTimestampHour * 60  * 60) + (iAlarmOnTimestampMinute * 60);
+                int alarmVolumeIncreaseDuration = id(alarm_volume_increase_duration).state;
+                int alarmVolumeIncrease = id(alarm_volume_increase).state;
+                if (alarmVolumeIncreaseDuration != 0 && alarmVolumeIncrease != 0) {
+                  if (currentTimeForAlarmTimeStamp != alarmTimeStamp) { // its not at 0
+                    int alarmDuration = currentTimeForAlarmTimeStamp - alarmTimeStamp;
+                    int result = alarmDuration % alarmVolumeIncreaseDuration;
+                    ESP_LOGD("check_alarms", "alarmDuration %i", alarmDuration);
+                    ESP_LOGD("check_alarms", "result 1 %i", result);
+                    if (result == 0) { //the remainder is 0, which means alarmVolumeIncreaseDuration has passed
+                      ESP_LOGD("check_alarms", "currentTimeForAlarmTimeStamp %i", currentTimeForAlarmTimeStamp);
+                      ESP_LOGD("check_alarms", "alarmTimeStamp %i", alarmTimeStamp);
+                      ESP_LOGD("check_alarms", "result 2 %i", result);
+                      ESP_LOGD("check_alarms", "alarmVolumeIncreaseDuration %i", alarmVolumeIncreaseDuration);
+                      result = alarmDuration / alarmVolumeIncreaseDuration;
+                      ESP_LOGD("check_alarms", "result 3 %i", result);
+                      if (result > 0) {
+                        int newVolume = id(alarm_volume).state + (result * alarmVolumeIncrease); //add number of passed alarmVolumeIncreaseDuration to the known base volume
+                        if (newVolume > 100) {
+                          newVolume = 100;
+                        }
+                        id(set_volume).execute(newVolume);
+                        ESP_LOGD("check_alarms", "Updating volume with %i. This", newVolume);
+                      }
+                    }
+                  }
+                }
+              }
+              else {
+                ESP_LOGW("check_alarms", "alarm_on_timestamp does not have a value, unable to determine volume increase");
               }
             }
           }
@@ -2206,6 +2407,41 @@ script:
               ESP_LOGD("check_alarms", "Sleep timer disabled");
             }
           }
+  - id: media_player_watchdog
+    mode: single
+    then:
+      - lambda: |-
+          if (!id(time_sync_done)) {
+            //do nothing, time sync needs to be done
+          }
+          else if (id(media_player_alarm).state == 2 && !id(alarm_on).state && !id(music_on).state) { //MEDIA_PLAYER_STATE_NONE = 0 , MEDIA_PLAYER_STATE_IDLE = 1 , MEDIA_PLAYER_STATE_PLAYING = 2 , MEDIA_PLAYER_STATE_PAUSED = 3 ,  MEDIA_PLAYER_STATE_ANNOUNCING = 4
+            ESP_LOGD("media_player_watchdog", "Media player is playing, alarm_on and music_on are switched off");
+            id(media_player_watchdog_count) = id(media_player_watchdog_count) + 1;
+            if (id(media_player_watchdog_count) > 1) {
+              ESP_LOGD("media_player_watchdog", "Media player is playing, media_player_watchdog_count is %i, enabling music_on", id(media_player_watchdog_count));
+              id(music_on).turn_on();
+            }
+          }
+          else if ((id(media_player_alarm).state == 0 || id(media_player_alarm).state == 1) && (id(alarm_on).state || id(music_on).state)) {
+            ESP_LOGD("media_player_watchdog", "Media player is not playing, alarm_on or music_on are switched on");
+            id(media_player_watchdog_count) = id(media_player_watchdog_count) + 1;
+            if (id(media_player_watchdog_count) < 3) {
+              ESP_LOGD("media_player_watchdog", "Media player should be playing, trying to play the configured url for count %i", id(media_player_watchdog_count));
+              id(play_url).execute();
+            }
+            else if (id(alarm_on).state) {
+              ESP_LOGW("media_player_watchdog", "Failed to start stream, enabling announcement to force alarm sound");
+              id(alarm_on_local).turn_on();
+            }
+            else if (id(music_on).state) {
+              ESP_LOGE("media_player_watchdog", "Failed to start stream, switching off music_on");
+              id(music_on).turn_off();
+            }
+          }
+          else if (id(media_player_watchdog_count) != 0) {
+            ESP_LOGD("media_player_watchdog", "Resetting media_player_watchdog_count");
+            id(media_player_watchdog_count) = 0;
+          }
   - id: set_alarm_last_off
     then:
       - lambda:
@@ -2217,9 +2453,34 @@ script:
     then:
       - lambda:
           id(snooze_timestamp) = timestamp;
-          ESP_LOGD("set_alarm_last_off", "alarm_last_off %i", id(snooze_timestamp));
+          ESP_LOGD("set_snooze_timestamp", "alarm_last_off %i", id(snooze_timestamp));
       - if:
           condition:
             - lambda: 'return { (id(time_sync_done) == true) };'
           then:
             - component.update: snooze_time
+  - id: set_volume
+    parameters:
+      volume: int
+    then:
+      - media_player.volume_set: !lambda
+          float newVolume = float(volume);
+          float newVolumeFloat = (newVolume/100);
+          ESP_LOGD("set_volume", "newVolume %f newVolumeFloat %f", newVolume, newVolumeFloat);
+          return newVolumeFloat;
+  - id: play_url
+    then:
+      - lambda:
+          const esphome::optional<std::string> url = id(media_player_alarm).make_call().get_media_url();
+          if (url.has_value()) {
+            ESP_LOGD("play_url", "Media has URL");
+          }
+          else {
+            ESP_LOGD("play_url", "Media has no URL");
+            auto mediaPlayerCall = id(media_player_alarm).make_call();
+            auto selectState = id(alarm_stream_url).state.c_str();
+            mediaPlayerCall.set_media_url(selectState);
+            mediaPlayerCall.perform();
+            ESP_LOGD("play_url", "Setting stream url %s", selectState);
+          }
+          id(media_player_stopped) = 0;

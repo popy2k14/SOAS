@@ -24,6 +24,8 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 * Online radio streams.
 * Decent sound.
 * Ability to hide the clock
+* Volume increase of the alarm after a defined time of alarming
+* Local file as fallback when internet is not available
 
 ## Requirements
 * < €25,-
@@ -43,7 +45,6 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 ## Optional
 
 * A bit of soldering is not required, but the ground has to be shared so it is nice to solder that one. Depending on your rotary button, you maybe also need to do a little bit of soldering
-* Design a fit for your speaker, or glue the speaker to the case
 
 ## Installation
 
@@ -66,20 +67,20 @@ Connect all dupont cables corresponding the schema's below:
 | D             | GND    |
 | E             | GPIO8  |
 
-| MAX98357a | ESP32  |
-| --------- | ------ |
-| LRC       | GPIO3  |
-| BLCK      | GPIO1  |
-| DIN       | GPIO2  |
-| GND       | GND    |
-| Vin       | 5v     |
+| MAX98357a | ESP32   |
+| --------- | ------- |
+| LRC       | GPIO3   |
+| BLCK      | GPIO1   |
+| DIN       | GPIO2   |
+| GND       | GND     |
+| Vin       | 5v / 3v |
 
-| Flat head button | ESP32  |
-| ---------------- | ------ |
-| Switch           | GPIO4  |
-| GND              | GND    |
+| Flat head button | ESP32 |
+| ---------------- | ----- |
+| Switch           | GPIO4 |
+| GND              | GND   |
 
-Include the config below in your YAML:
+Include the config below in your YAML. This one is made for a `ESP32-S3-N16R8`:
 
 ```yaml
 substitutions:
@@ -96,6 +97,7 @@ substitutions:
   pin_b: GPIO10
   alarm_off_button_pin: GPIO4
   rotary_button_pin: GPIO8
+  alarm_file: alarm.flac
 
 packages:
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
@@ -119,31 +121,15 @@ select:
 esphome:
   name: alarm-clock-soas
   friendly_name: Alarm Clock SOAS
-  on_boot:
-    - priority: 600
-      then: #clicking workaround
-        - if:
-            condition:
-              - switch.is_on: alarm_on
-            then: #restore playback
-              - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
-              - wait_until:
-                  lambda:
-                    return (id(time_sync_done) == true);
-              - switch.turn_on: alarm_on
-            else: #clicking workaround
-              - logger.log: "Alarm was off before reboot, preventing clicking sound"
-              - wait_until:
-                  wifi.connected:
-              - media_player.volume_set: 0
-              - media_player.play_media: !lambda return id(alarm_stream_url).state.c_str();
-              - wait_until:
-                  media_player.is_playing :
-              - media_player.stop:
-              - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
   platformio_options: #PSRAM stuff
     build_flags: "-DBOARD_HAS_PSRAM"
     board_build.arduino.memory_type: qio_opi
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+  flash_size: 16MB
 
 psram:
   mode: octal
@@ -154,6 +140,8 @@ Save the `fonts` folder into your ESPHome folder. The folder needs to be placed 
 
 Edit the `select` options with a stream URL and the name of the stream. To get some streams, install [radio browser](https://www.home-assistant.io/integrations/radio_browser/). Select a stream, send it to the clock and look at the ESPHome logging to view the URL of that stream.
 
+Edit `alarm_file` to have your own local alarm. You can use mp3, wav or a flac file.
+
 ## Usage
 
 The rotary button is the button for accessing and editing configuration. When on a page, and there is no blinking of a configuration, you will automatically be redirected to the time page after 5 seconds of inactivity. The edit mode, blinking of a configuration, needs to be exited to return back to the time page. Entering and exiting the edit mode is done by single clicking the rotary button.
@@ -161,18 +149,13 @@ The rotary button is the button for accessing and editing configuration. When on
 ### Time page
 
 #### Flathead short press
-When the alarm, sleep timer and snooze are off, single press will switch the alarm on. If the sleep timer is enabled, the sleep timer will also switch on.
+When the alarm, sleep timer and snooze are off, single press will switch the music on. If the sleep timer is enabled, the sleep timer will also switch to on.
+
+If the sleep timer is on and the music is on, the music will be switched off.
 
 When the alarm is on, snooze will switch on and the alarm will go to off.
 
 When snooze is on, the snooze will be switched off on single press.
-
-#### Flathead long press
-When the alarm is on, the flathead button needs to be pressed at least 2 seconds to disable the alarm.
-
-If snooze is on, press it at least two seconds for disabling the snooze. Your alarm won't go off again until the next day.
-
-Press it at least 2 seconds when snooze is not on, and the alarm is not sounding, to switch on the alarm. If the sleep timer is enabled, the alarm will go silent after the defined time.
 
 #### Rotary single click
 Single click of the rotary button toggles the alarm.
@@ -243,6 +226,8 @@ A few options are not (yet) available on the alarm self:
 * Snooze duration
 * Display Mode
 * Hide clock
+* Alarm volume increase
+* Alarm volume increase duration
 
 Use Home Assistant to configure these options.
 
@@ -259,16 +244,37 @@ The `Minimum night only` will have a smaller font for less light. The wifi icon 
 
 `Minimum` is the same as `Minimum night only`, except that it is the mode also during daytime.
 
+## Alarm volume increase
+
+Define the time in seconds, `Alarm volume increase duration`, the alarm must sound before the amount of volume increase, `Alarm volume increase`, will be applied to make the volume go up. If one of the 2 is set to `0`, this feature is disabled.
+
+## FAQ
+
+### SH1107 SPI/I2C
+
+Some SH1107 display modules support both I2C and SPI interface modes (one mode at a time). To switch to SPI mode, follow [this](https://simple-circuit.com/interfacing-arduino-sh1107-oled-display-i2c-mode/) tutorial and review [this](https://github.com/Skons/SOAS/issues/2#issue-3286014273) post.
+
 ## ToDo
 
-* Home Assistant file stream as fallback on internet failure
-* Local file as fallback when internet failure and Home Assistant failure/travel clock (https://esphome.io/guides/audio_clips_for_i2s.html)
 * Ability to save streamed url to local instead of having a list of streams (https://alshowto.com/home-assistant-and-esphome-how-to-series-1-step-3-make-a-simple-media-speaker/, see things that are quirky)
 
 ## Known issues
 * If the variables have not been written to flash, playback could possible not restore if de clock crashes. Possible fix: https://community.home-assistant.io/t/flash-write-interval/401927/2
 
 ## Changelog
+
+### 2025.x.x.x
+  - **BREAKING** Switch to esp-idf framework
+  - **BREAKING** on_boot is removed from the yaml, see `esphome:` above
+  - **BREAKING** Flathead long press removed
+  - **BREAKING** Music is added to distinguish between alarm sound and playing music (for sleep timer and the hardware button). If music is streamed to the device, it's not treated as an alarm anymore
+  - Ability to increase the volume after a period of sounding the alarm #5
+  - Local file can be added for when internet and/or home assistant is not available
+  - Cosmetic updates to the yaml
+  - When music is streamed to the clock, music_on will be switched on, enabling local controls
+  - Volume is set to alarm_volume on stream stop, this is because of volume increase on alarm
+  - Added I2C to SPI documentation, see issue [#2](https://github.com/Skons/SOAS/issues/2). Thanks @popy2k14
+  - Documentation updates
 
 ### 2025.7.14.1
  - ESP PSRAM implementation
