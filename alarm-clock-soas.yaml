@@ -1,17 +1,3 @@
-esphome:
-  on_boot:
-    - priority: 600
-      then: #clicking workaround
-        - if:
-            condition:
-              - switch.is_on: alarm_on
-            then: #restore playback
-              - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
-              - wait_until:
-                  lambda:
-                    return (id(time_sync_done) == true);
-              - switch.turn_on: alarm_on
-
 logger:
   on_message:
     level: ERROR
@@ -470,8 +456,8 @@ number:
     entity_category: config
     optimistic: true
     restore_value: true
-    initial_value: 0
-    min_value: 50
+    initial_value: 50
+    min_value: 0
     max_value: 100
     step: 1
     mode: slider
@@ -2364,22 +2350,23 @@ script:
                   if (currentTimeForAlarmTimeStamp != alarmTimeStamp) { // its not at 0
                     int alarmDuration = currentTimeForAlarmTimeStamp - alarmTimeStamp;
                     int result = alarmDuration % alarmVolumeIncreaseDuration;
-                    ESP_LOGD("check_alarms", "alarmDuration %i", alarmDuration);
-                    ESP_LOGD("check_alarms", "result 1 %i", result);
+                    //ESP_LOGD("check_alarms", "alarmDuration %i", alarmDuration);
+                    //ESP_LOGD("check_alarms", "result 1 %i", result);
                     if (result == 0) { //the remainder is 0, which means alarmVolumeIncreaseDuration has passed
-                      ESP_LOGD("check_alarms", "currentTimeForAlarmTimeStamp %i", currentTimeForAlarmTimeStamp);
-                      ESP_LOGD("check_alarms", "alarmTimeStamp %i", alarmTimeStamp);
-                      ESP_LOGD("check_alarms", "result 2 %i", result);
-                      ESP_LOGD("check_alarms", "alarmVolumeIncreaseDuration %i", alarmVolumeIncreaseDuration);
+                      ESP_LOGD("check_alarms", "alarmVolumeIncreaseDuration %i seconds since alarm start %i has passed", alarmVolumeIncreaseDuration, tAlarmTimeStamp);
+                      //ESP_LOGD("check_alarms", "currentTimeForAlarmTimeStamp %i", currentTimeForAlarmTimeStamp);
+                      //ESP_LOGD("check_alarms", "alarmTimeStamp %i", alarmTimeStamp);
+                      //ESP_LOGD("check_alarms", "result 2 %i", result);
+                      //ESP_LOGD("check_alarms", "alarmVolumeIncreaseDuration %i", alarmVolumeIncreaseDuration);
                       result = alarmDuration / alarmVolumeIncreaseDuration;
-                      ESP_LOGD("check_alarms", "result 3 %i", result);
+                      ///ESP_LOGD("check_alarms", "result 3 %i", result);
                       if (result > 0) {
                         int newVolume = id(alarm_volume).state + (result * alarmVolumeIncrease); //add number of passed alarmVolumeIncreaseDuration to the known base volume
                         if (newVolume > 100) {
                           newVolume = 100;
                         }
                         id(set_volume).execute(newVolume);
-                        ESP_LOGD("check_alarms", "Updating volume with %i. This", newVolume);
+                        ESP_LOGD("check_alarms", "Updating volume with %i", newVolume);
                       }
                     }
                   }
@@ -2439,6 +2426,7 @@ script:
     mode: single
     then:
       - lambda: |-
+          //ESP_LOGD("media_player_watchdog", "Media player state %i", id(media_player_alarm).state);
           if (!id(time_sync_done)) {
             //do nothing, time sync needs to be done
           }
