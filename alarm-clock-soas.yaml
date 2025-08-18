@@ -70,7 +70,7 @@ media_player:
     name: Media player alarm
     media_pipeline:
         speaker: media_spk_resampling_input
-        num_channels: 2
+        num_channels: 1
     announcement_pipeline:
         speaker: announcement_spk_resampling_input
         num_channels: 1
@@ -471,7 +471,7 @@ number:
     optimistic: true
     restore_value: true
     initial_value: 0
-    min_value: 0
+    min_value: 50
     max_value: 100
     step: 1
     mode: slider
@@ -1264,6 +1264,7 @@ display:
           int shouldBlink = atoi(seconds) % 2;
           bool is_night_mode = !id(time_sunrise);
           bool showClock = id(clock_on_display).state;
+          std::string language = "${language}";
 
           auto index = id(display_mode).active_index();
           int displayMode = 0;
@@ -1387,7 +1388,34 @@ display:
           }
 
           if (it.get_width() == 128 && it.get_height() == 128) { //sh1107
-            it.strftime(0, (it.get_width()/2)-10, timeFont20, TextAlign::BOTTOM_LEFT, "%a", time);
+            // convert ESPTime to struct tm (no Pointer!)
+            struct tm cTime = time.to_c_tm();
+
+            // Get englisch weekday
+            char cMonth[4];
+            strftime(cMonth, sizeof(cMonth), "%a", &cTime);
+
+            std::string sMonth;
+            sMonth = cMonth; // fallback
+            if (language == "NL") {
+              if (strcmp(cMonth, "Sun") == 0) sMonth = "Zo";
+              else if (strcmp(cMonth, "Mon") == 0) sMonth = "Ma";
+              else if (strcmp(cMonth, "Tue") == 0) sMonth = "Di";
+              else if (strcmp(cMonth, "Wed") == 0) sMonth = "Wo";
+              else if (strcmp(cMonth, "Thu") == 0) sMonth = "Do";
+              else if (strcmp(cMonth, "Fri") == 0) sMonth = "Fr";
+              else if (strcmp(cMonth, "Sat") == 0) sMonth = "Za";
+            }
+            else  if (language == "DE") {
+              if (strcmp(cMonth, "Sun") == 0) sMonth = "So";
+              else if (strcmp(cMonth, "Mon") == 0) sMonth = "Mo";
+              else if (strcmp(cMonth, "Tue") == 0) sMonth = "Di";
+              else if (strcmp(cMonth, "Wed") == 0) sMonth = "Mi";
+              else if (strcmp(cMonth, "Thu") == 0) sMonth = "Do";
+              else if (strcmp(cMonth, "Fri") == 0) sMonth = "Fr";
+              else if (strcmp(cMonth, "Sat") == 0) sMonth = "Sa";
+            }
+            it.print(0, (it.get_width()/2)-10, timeFont20, TextAlign::BOTTOM_LEFT, sMonth.c_str());
             it.strftime(0, (it.get_width()/2)-10, timeFont20, TextAlign::TOP_LEFT, "%d-%m", time);
 
             std::string preZeroHour = "";

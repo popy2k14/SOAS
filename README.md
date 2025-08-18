@@ -98,6 +98,7 @@ substitutions:
   alarm_off_button_pin: GPIO4
   rotary_button_pin: GPIO8
   alarm_file: alarm.flac
+  language: "EN" #NL and DE are also supported
 
 packages:
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
@@ -113,7 +114,7 @@ time:
 select:
   - id: !extend alarm_stream_url
     options:
-      - "mp3 or pls url to radio" #AAC seams to be making SOAS crash
+      - "mp3 url to radio" #AAC seams to be making SOAS crash, FLAC or WAV will probably also work
   - id: !extend alarm_stream_name
     options:
       - "Friendly name of the radio station"
@@ -265,15 +266,17 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
 
 ### 2025.x.x.x
   - **BREAKING** Switch to esp-idf framework
+  - **BREAKING** With the switch to esp-idf pls stream urls do not work anymore
   - **BREAKING** on_boot is removed from the yaml, see `esphome:` above
   - **BREAKING** Flathead long press removed
   - **BREAKING** Music is added to distinguish between alarm sound and playing music (for sleep timer and the hardware button). If music is streamed to the device, it's not treated as an alarm anymore
-  - Ability to increase the volume after a period of sounding the alarm #5
+  - Ability to increase the volume after a period of sounding the alarm [#5](https://github.com/Skons/SOAS/issues/5)
   - Local file can be added for when internet and/or home assistant is not available
   - Cosmetic updates to the yaml
   - When music is streamed to the clock, music_on will be switched on, enabling local controls
   - Volume is set to alarm_volume on stream stop, this is because of volume increase on alarm
   - Added I2C to SPI documentation, see issue [#2](https://github.com/Skons/SOAS/issues/2). Thanks @popy2k14
+  - Language support for weekdays [#3](https://github.com/Skons/SOAS/issues/3)
   - Documentation updates
 
 ### 2025.7.14.1
