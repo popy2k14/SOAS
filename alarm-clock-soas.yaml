@@ -958,7 +958,8 @@ select:
     options:
      - "Full"
      - "Minimum night only"
-     - "Minimum"
+     - "Minimum night contrast"
+     - "Minimum day contrast"
     optimistic: true
     restore_value: true
 
@@ -1260,24 +1261,28 @@ display:
               displayMode = 1;
             }
             else if (index.value() == 2) {
-              //minimum
+              //minimum night contrast
               displayMode = 2;
             }
+            else if (index.value() == 3) {
+              //minimum day contrast
+              displayMode = 3;
+            }            
           }
 
           //determine font
           auto timeFont51 = id(robotomedium51);
           auto timeFont20 = id(robotomedium20);
-          if (displayMode == 1 || displayMode == 2) {
+          if (displayMode == 1 || displayMode == 2 || displayMode == 3) {
             timeFont51 = id(robotothin51);
             timeFont20 = id(robotothin20);
           }
 
-          if (!is_night_mode) {
-            alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
+          if ((is_night_mode && displayMode == 1) || displayMode == 2) {
+            alarmdisplay->set_contrast(id(screen_contrast_night).state/100);
           }
           else {
-            alarmdisplay->set_contrast(id(screen_contrast_night).state/100);
+            alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
           }
 
           //status bar
@@ -1438,7 +1443,7 @@ display:
             }
             else {
               it.strftime((it.get_width()/2)-(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_RIGHT, "%H", time);
-              if((displayMode == 1 || displayMode == 2) || shouldBlink) {
+              if((displayMode == 1 || displayMode == 2 || displayMode == 3) || shouldBlink) {
                 it.printf((it.get_width()/2), timeY, timeFont51, TextAlign::BOTTOM_CENTER, ":");
               }
               it.strftime((it.get_width()/2)+(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_LEFT, "%M", time);

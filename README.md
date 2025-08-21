@@ -243,7 +243,9 @@ The `Full` means that all is visible. The second indicator `:` will only blink d
 
 The `Minimum night only` will have a smaller font for less light. The wifi icon will not be displayed unless there is no wifi. The second indicator does not blink. This will only be displayed during night time.
 
-`Minimum` is the same as `Minimum night only`, except that it is the mode also during daytime.
+The `Minimum night contrast` is the same as `Minimum night only`, except that it is the mode also during daytime and uses night contrast slider value.
+
+`Minimum day contrast` is the same as `Minimum night only`, except that it is the mode also during daytime and uses day contrast slider value.
 
 ## Alarm volume increase
 
@@ -270,6 +272,7 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
   - **BREAKING** on_boot is removed from the yaml, see `esphome:` above
   - **BREAKING** Flathead long press removed
   - **BREAKING** Music is added to distinguish between alarm sound and playing music (for sleep timer and the hardware button). If music is streamed to the device, it's not treated as an alarm anymore
+  - **BREAKING** Renamed "Minimum" to "Minimum night contrast" and use night contrast slider value.
   - Ability to increase the volume after a period of sounding the alarm [#5](https://github.com/Skons/SOAS/issues/5)
   - Local file can be added for when internet and/or home assistant is not available
   - Cosmetic updates to the yaml
@@ -277,6 +280,9 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
   - Volume is set to alarm_volume on stream stop, this is because of volume increase on alarm
   - Added I2C to SPI documentation, see issue [#2](https://github.com/Skons/SOAS/issues/2). Thanks @popy2k14
   - Language support for weekdays [#3](https://github.com/Skons/SOAS/issues/3)
+  - Added `Minimum night contrast` which is the same as `Minimum night only`, except that it is the mode also during daytime and uses night contrast slider value.
+
+`Minimum day contrast` is the same as `Minimum night only`, except that it is the mode also during daytime and uses day contrast slider value.
   - Documentation updates
 
 ### 2025.7.14.1
