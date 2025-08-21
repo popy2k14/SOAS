@@ -261,10 +261,11 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
 
 ## Known issues
 * If the variables have not been written to flash, playback could possible not restore if de clock crashes. Possible fix: https://community.home-assistant.io/t/flash-write-interval/401927/2
+* If internet is down and SOAS decides to restart, time will not be set
 
 ## Changelog
 
-### 2025.x.x.x
+### 2025.8.25.1
   - **BREAKING** Switch to esp-idf framework
   - **BREAKING** With the switch to esp-idf pls stream urls do not work anymore
   - **BREAKING** on_boot is removed from the yaml, see `esphome:` above
