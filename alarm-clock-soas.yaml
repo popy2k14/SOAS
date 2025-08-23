@@ -673,7 +673,7 @@ binary_sensor:
       inverted: true
     on_multi_click:
       - timing: #single click
-        - ON for at most 1s
+        - ON for at most ${alarm_off_button_single_click_time}
         - OFF for at least 0.5s
         then:
           - lambda: |-

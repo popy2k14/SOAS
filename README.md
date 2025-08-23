@@ -111,6 +111,7 @@ substitutions:
   language: "EN" #NL and DE are also supported
   alarm_file: alarm.flac
   language: "EN" #NL and DE are also supported
+  alarm_off_button_single_click_time: 1s #max time in seconds, which the alarm off button can be pressed to recognize the press
 
 packages:
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
@@ -301,6 +302,9 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
 
 ## Changelog
 
+### 2025.x.x.x
+- Configurable max alarm off button time
+
 ### 2025.8.25.2
   - Fixed that the sleep timer disabled the alarm, not the new music switch
 
@@ -332,6 +336,7 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
   - Volume is set to alarm_volume on stream stop, this is because of volume increase on alarm
   - Added I2C to SPI documentation, see issue [#2](https://github.com/Skons/SOAS/issues/2). Thanks @popy2k14
   - Language support for weekdays [#3](https://github.com/Skons/SOAS/issues/3)
+  - Configurable max alarm off button time
   - Documentation updates
 
 ### 2025.7.14.1
