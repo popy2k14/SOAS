@@ -26,6 +26,8 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 * Ability to hide the clock
 * Volume increase of the alarm after a defined time of alarming
 * Local file as fallback when internet is not available
+* Volume increase of the alarm after a defined time of alarming
+* Local file as fallback when internet is not available
 
 ## Requirements
 * < €25,-
@@ -74,12 +76,20 @@ Connect all dupont cables corresponding the schema's below:
 | DIN       | GPIO2   |
 | GND       | GND     |
 | Vin       | 5v / 3v |
+| MAX98357a | ESP32   |
+| --------- | ------- |
+| LRC       | GPIO3   |
+| BLCK      | GPIO1   |
+| DIN       | GPIO2   |
+| GND       | GND     |
+| Vin       | 5v / 3v |
 
 | Flat head button | ESP32 |
 | ---------------- | ----- |
 | Switch           | GPIO4 |
 | GND              | GND   |
 
+Include the config below in your YAML. This one is made for a `ESP32-S3-N16R8`:
 Include the config below in your YAML. This one is made for a `ESP32-S3-N16R8`:
 
 ```yaml
@@ -99,6 +109,8 @@ substitutions:
   rotary_button_pin: GPIO8
   alarm_file: alarm.flac
   language: "EN" #NL and DE are also supported
+  alarm_file: alarm.flac
+  language: "EN" #NL and DE are also supported
 
 packages:
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
@@ -114,6 +126,7 @@ time:
 select:
   - id: !extend alarm_stream_url
     options:
+      - "mp3 url to radio" #AAC seams to be making SOAS crash, FLAC or WAV will probably also work
       - "mp3 url to radio" #AAC seams to be making SOAS crash, FLAC or WAV will probably also work
   - id: !extend alarm_stream_name
     options:
@@ -132,6 +145,12 @@ esp32:
     type: esp-idf
   flash_size: 16MB
 
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+  flash_size: 16MB
+
 psram:
   mode: octal
   speed: 80MHz
@@ -143,6 +162,8 @@ Edit the `select` options with a stream URL and the name of the stream. To get s
 
 Edit `alarm_file` to have your own local alarm. You can use mp3, wav or a flac file.
 
+Edit `alarm_file` to have your own local alarm. You can use mp3, wav or a flac file.
+
 ## Usage
 
 The rotary button is the button for accessing and editing configuration. When on a page, and there is no blinking of a configuration, you will automatically be redirected to the time page after 5 seconds of inactivity. The edit mode, blinking of a configuration, needs to be exited to return back to the time page. Entering and exiting the edit mode is done by single clicking the rotary button.
@@ -150,6 +171,9 @@ The rotary button is the button for accessing and editing configuration. When on
 ### Time page
 
 #### Flathead short press
+When the alarm, sleep timer and snooze are off, single press will switch the music on. If the sleep timer is enabled, the sleep timer will also switch to on.
+
+If the sleep timer is on and the music is on, the music will be switched off.
 When the alarm, sleep timer and snooze are off, single press will switch the music on. If the sleep timer is enabled, the sleep timer will also switch to on.
 
 If the sleep timer is on and the music is on, the music will be switched off.
@@ -229,6 +253,8 @@ A few options are not (yet) available on the alarm self:
 * Hide clock
 * Alarm volume increase
 * Alarm volume increase duration
+* Alarm volume increase
+* Alarm volume increase duration
 
 Use Home Assistant to configure these options.
 
@@ -255,6 +281,16 @@ Define the time in seconds, `Alarm volume increase duration`, the alarm must sou
 
 Some SH1107 display modules support both I2C and SPI interface modes (one mode at a time). To switch to SPI mode, follow [this](https://simple-circuit.com/interfacing-arduino-sh1107-oled-display-i2c-mode/) tutorial and review [this](https://github.com/Skons/SOAS/issues/2#issue-3286014273) post.
 
+## Alarm volume increase
+
+Define the time in seconds, `Alarm volume increase duration`, the alarm must sound before the amount of volume increase, `Alarm volume increase`, will be applied to make the volume go up. If one of the 2 is set to `0`, this feature is disabled.
+
+## FAQ
+
+### SH1107 SPI/I2C
+
+Some SH1107 display modules support both I2C and SPI interface modes (one mode at a time). To switch to SPI mode, follow [this](https://simple-circuit.com/interfacing-arduino-sh1107-oled-display-i2c-mode/) tutorial and review [this](https://github.com/Skons/SOAS/issues/2#issue-3286014273) post.
+
 ## ToDo
 
 * Ability to save streamed url to local instead of having a list of streams (https://alshowto.com/home-assistant-and-esphome-how-to-series-1-step-3-make-a-simple-media-speaker/, see things that are quirky)
@@ -267,6 +303,21 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
 
 ### 2025.8.25.2
   - Fixed that the sleep timer disabled the alarm, not the new music switch
+
+### 2025.8.25.1
+  - **BREAKING** Switch to esp-idf framework
+  - **BREAKING** With the switch to esp-idf pls stream urls do not work anymore
+  - **BREAKING** on_boot is removed from the yaml, see `esphome:` above
+  - **BREAKING** Flathead long press removed
+  - **BREAKING** Music is added to distinguish between alarm sound and playing music (for sleep timer and the hardware button). If music is streamed to the device, it's not treated as an alarm anymore
+  - Ability to increase the volume after a period of sounding the alarm [#5](https://github.com/Skons/SOAS/issues/5)
+  - Local file can be added for when internet and/or home assistant is not available
+  - Cosmetic updates to the yaml
+  - When music is streamed to the clock, music_on will be switched on, enabling local controls
+  - Volume is set to alarm_volume on stream stop, this is because of volume increase on alarm
+  - Added I2C to SPI documentation, see issue [#2](https://github.com/Skons/SOAS/issues/2). Thanks @popy2k14
+  - Language support for weekdays [#3](https://github.com/Skons/SOAS/issues/3)
+  - Documentation updates
 
 ### 2025.8.25.1
   - **BREAKING** Switch to esp-idf framework
