@@ -265,6 +265,9 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
 
 ## Changelog
 
+### 2025.8.25.2
+  - Fixed that the sleep timer disabled the alarm, not the new music switch
+
 ### 2025.8.25.1
   - **BREAKING** Switch to esp-idf framework
   - **BREAKING** With the switch to esp-idf pls stream urls do not work anymore
