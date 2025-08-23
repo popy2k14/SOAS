@@ -1220,7 +1220,7 @@ switch:
             condition:
               lambda: 'return (id(time_sync_done) == true);'
             then:
-              - switch.turn_off: alarm_on
+              - switch.turn_off: music_on
               - number.set:
                   id: sleep_timer_timestamp
                   value: 0
