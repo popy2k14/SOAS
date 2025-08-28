@@ -297,13 +297,14 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
 * Ability to save streamed url to local instead of having a list of streams (https://alshowto.com/home-assistant-and-esphome-how-to-series-1-step-3-make-a-simple-media-speaker/, see things that are quirky)
 
 ## Known issues
-* If the variables have not been written to flash, playback could possible not restore if de clock crashes. Possible fix: https://community.home-assistant.io/t/flash-write-interval/401927/2
 * If internet is down and SOAS decides to restart, time will not be set
 
 ## Changelog
 
 ### 2025.x.x.x
 - Configurable max alarm off button time
+- write preferences (like alarm_on) immediately to flash when alarm goes off (alarm_on set to true).
+  If the clock would crash, it will restore alarm_on (true) and restores the alarm.
 
 ### 2025.8.25.2
   - Fixed that the sleep timer disabled the alarm, not the new music switch
