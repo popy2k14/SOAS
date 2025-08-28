@@ -16,11 +16,41 @@ media_player:
     i2s_dout_pin: ${i2s_dout_pin}
     mode: mono
     on_play:
-      - logger.log: "Playback started!"
+      - lambda: |-
+          id(last_play_started) = id(ntp).now().timestamp;
+          ESP_LOGI("media", "Playback started!");
     on_pause:
       - logger.log: "Playback paused!"
     on_idle:
-      - logger.log: "Playback finished!"
+      - lambda: |-
+          int now = id(ntp).now().timestamp;
+          int diff = now - id(last_play_started);
+          ESP_LOGI("media", "Playback finished! (diff=%d sec)", diff);
+          if ((diff < 4) && (id(alarm_on).state)) {
+            ESP_LOGW("media", "Alarm is ON and stream failed, playing RTTTL fallback!");
+            id(alarm_on_local).turn_on();            
+          }
+
+output:
+  - platform: ledc
+    pin: $buzzer_pin
+    id: rtttl_out
+    
+rtttl:
+  id: my_rtttl
+  output: rtttl_out
+  gain: $buzzer_gain
+  on_finished_playback:
+    - logger.log: 'Song ended!'  
+  
+api:
+  services:
+    - service: tune
+      variables:
+        tune: string
+      then:
+        - rtttl.play:
+            rtttl: !lambda 'return tune;'
 
 font:
   - file: fonts/Roboto-Medium.ttf
@@ -113,6 +143,11 @@ globals:
     type: int
     restore_value: yes
     initial_value: '0'
+  - id: last_play_started
+    type: int
+    restore_value: no
+    initial_value: "0"
+    
 
 interval:
   - interval: 10s
@@ -482,83 +517,98 @@ sensor:
       mode: INPUT_PULLUP
     on_anticlockwise:
       then:
-      - if:
+        - if:
             condition:
-              lambda: |-
-                if (id(current_page_id) == 1 && id(alarm_on).state) {
-                  ESP_LOGD("rotary_encoder", "alarm is on, show volume");
-                  return true;
-                }
-                return false;
+              and:
+                - switch.is_on: enable_display_on_interaction
+                - switch.is_off: display_enabled
             then:
-              - display.page.show: page12
-              - script.execute:
-                  id: reset_page_script
-            else: #browse all pages
+              - switch.turn_on: display_enabled
+            else:
               - if:
                   condition:
                     lambda: |-
-                      if (id(rotate_switch_single) == 0 && id(rotate_switch_double) == 0 && id(current_page_id) < 9) {
-                        ESP_LOGD("rotary_encoder", "anticlockwise");
+                      if (id(current_page_id) == 1 && id(alarm_on).state) {
+                        ESP_LOGD("rotary_encoder", "alarm is on, show volume");
                         return true;
                       }
                       return false;
                   then:
-                    - if: #dont show special pages
-                        condition:
-                          display.is_displaying_page:
-                            id: alarmdisplay
-                            page_id: page1
-                        then:
-                          - display.page.show: page8
-                        else:
-                          - display.page.show_previous: alarmdisplay
+                    - display.page.show: page12
                     - script.execute:
                         id: reset_page_script
-                  else: #edit items on page
-                    - script.execute:
-                        id: rotary_encoder_script
-                        clockwise: false
+                  else: # browse all pages
+                    - if:
+                        condition:
+                          lambda: |-
+                            if (id(rotate_switch_single) == 0 && id(rotate_switch_double) == 0 && id(current_page_id) < 9) {
+                              ESP_LOGD("rotary_encoder", "anticlockwise");
+                              return true;
+                            }
+                            return false;
+                        then:
+                          - if: #dont show special pages
+                              condition:
+                                display.is_displaying_page:
+                                  id: alarmdisplay
+                                  page_id: page1
+                              then:
+                                - display.page.show: page8
+                              else:
+                                - display.page.show_previous: alarmdisplay
+                          - script.execute:
+                              id: reset_page_script
+                        else: #edit items on page
+                          - script.execute:
+                              id: rotary_encoder_script
+                              clockwise: false
     on_clockwise:
       then:
         - if:
             condition:
-              lambda: |-
-                if (id(current_page_id) == 1 && id(alarm_on).state) {
-                  ESP_LOGD("rotary_encoder", "alarm is on, show volume");
-                  return true;
-                }
-                return false;
+              and:
+                - switch.is_on: enable_display_on_interaction
+                - switch.is_off: display_enabled
             then:
-              - display.page.show: page12
-              - script.execute:
-                  id: reset_page_script
-            else: #browse all pages
+              - switch.turn_on: display_enabled
+            else:
               - if:
                   condition:
                     lambda: |-
-                      if (id(rotate_switch_single) == 0 && id(rotate_switch_double) == 0 && id(current_page_id) < 9) {
-                        ESP_LOGD("rotary_encoder", "clockwise");
+                      if (id(current_page_id) == 1 && id(alarm_on).state) {
+                        ESP_LOGD("rotary_encoder", "alarm is on, show volume");
                         return true;
                       }
                       return false;
                   then:
-                    - if: #dont show special pages
-                        condition:
-                          display.is_displaying_page:
-                            id: alarmdisplay
-                            page_id: page8
-                        then:
-                          - display.page.show: page1
-                        else:
-                          - display.page.show_next: alarmdisplay
+                    - display.page.show: page12
                     - script.execute:
                         id: reset_page_script
-                  else: #edit items on page
-                    - script.execute:
-                        id: rotary_encoder_script
-                        clockwise: true
-
+                  else: # browse all pages
+                    - if:
+                        condition:
+                          lambda: |-
+                            if (id(rotate_switch_single) == 0 && id(rotate_switch_double) == 0 && id(current_page_id) < 9) {
+                              ESP_LOGD("rotary_encoder", "clockwise");
+                              return true;
+                            }
+                            return false;
+                        then:
+                          - if: #dont show special pages
+                              condition:
+                                display.is_displaying_page:
+                                  id: alarmdisplay
+                                  page_id: page8
+                              then:
+                                - display.page.show: page1
+                              else:
+                                - display.page.show_next: alarmdisplay
+                          - script.execute:
+                              id: reset_page_script
+                        else: #edit items on page
+                          - script.execute:
+                              id: rotary_encoder_script
+                              clockwise: true
 binary_sensor:
   - platform: gpio
     pin:
@@ -570,65 +620,81 @@ binary_sensor:
     name: "Alarm off"
     on_multi_click:
       - timing: #long click
-        - ON for at least 2s
-        - OFF for at least 0.5s
-        then:
-          - if:
-              condition:
-                or:
-                  - switch.is_on: alarm_on
-                  - switch.is_on: snooze_on
-              then:
-                - switch.turn_off: alarm_on
-                - switch.turn_off: snooze_on
-                - switch.turn_off: sleep_timer_on
-              else:
-                - switch.turn_on: alarm_on
-                - if:
-                    condition:
-                      - switch.is_on: sleep_timer_enabled
-                    then:
-                      - switch.turn_on: sleep_timer_on
-      - timing: #single click
-        - ON for at most 1s
+        - ON for at least ${alarm_off_button_long_click_time}
         - OFF for at least 0.5s
         then:
           - if:
               condition:
                 and:
-                  - switch.is_on: alarm_on
-                  - switch.is_off: snooze_on
-                  - switch.is_off: sleep_timer_on
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
               then:
-                - switch.turn_on: snooze_on
+                - switch.turn_on: display_enabled
               else:
                 - if:
                     condition:
-                      - switch.is_on: snooze_on
+                      or:
+                        - switch.is_on: alarm_on
+                        - switch.is_on: snooze_on
                     then:
+                      - switch.turn_off: alarm_on
                       - switch.turn_off: snooze_on
+                      - switch.turn_off: sleep_timer_on
+                    else:
+                      - switch.turn_on: alarm_on
+                      - if:
+                          condition:
+                            - switch.is_on: sleep_timer_enabled
+                          then:
+                            - switch.turn_on: sleep_timer_on  
+      - timing: #single click
+        - ON for at most ${alarm_off_button_single_click_time}
+        - OFF for at least 0.5s
+        then:
+          - if:
+              condition:
+                and:
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
+              then:
+                - switch.turn_on: display_enabled
+              else:
+                - if:
+                    condition:
+                      and:
+                        - switch.is_on: alarm_on
+                        - switch.is_off: snooze_on
+                        - switch.is_off: sleep_timer_on
+                    then:
+                      - switch.turn_on: snooze_on
                     else:
                       - if:
                           condition:
-                            - switch.is_on: sleep_timer_on
+                            - switch.is_on: snooze_on
                           then:
-                            - switch.turn_off: sleep_timer_on
-                            - switch.turn_off: alarm_on
+                            - switch.turn_off: snooze_on
                           else:
                             - if:
                                 condition:
-                                  and:
-                                    - switch.is_off: alarm_on
-                                    - switch.is_on: sleep_timer_enabled
+                                  - switch.is_on: sleep_timer_on
                                 then:
-                                  - switch.turn_on: alarm_on
-                                  - switch.turn_on: sleep_timer_on
+                                  - switch.turn_off: sleep_timer_on
+                                  - switch.turn_off: alarm_on
                                 else:
                                   - if:
                                       condition:
-                                        - switch.is_off: alarm_on
+                                        and:
+                                          - switch.is_off: alarm_on
+                                          - switch.is_on: sleep_timer_enabled
                                       then:
                                         - switch.turn_on: alarm_on
+                                        - switch.turn_on: sleep_timer_on
+                                      else:
+                                        - if:
+                                            condition:
+                                              - switch.is_off: alarm_on
+                                            then:
+                                              - switch.turn_on: alarm_on
   - platform: gpio
     pin:
       number: ${rotary_button_pin}
@@ -639,214 +705,248 @@ binary_sensor:
     on_release:
       - logger.log: "Released"
     on_multi_click:
-      - timing: #long click
-        - ON for at least 2s
-        - OFF for at least 0.5s
+      - timing: # long click
+          - ON for at least 2s
+          - OFF for at least 0.5s
         then:
           - logger.log: "Long Click"
           - if:
               condition:
-                display.is_displaying_page: page1
+                and:
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
               then:
-                - display.page.show: page11
-                - script.execute:
-                    id: reset_page_script
-      - timing: #triple click
-        - ON for at most 0.5s
-        - OFF for at most 0.5s
-        - ON for at most 0.5s
-        - OFF for at most 0.5s
-        - ON for at most 0.5s
-        - OFF for at least 0.5s
+                - switch.turn_on: display_enabled
+              else:
+                - if:
+                    condition:
+                      display.is_displaying_page: page1
+                    then:
+                      - display.page.show: page11
+                      - script.execute:
+                          id: reset_page_script
+      - timing: # triple click
+          - ON for at most 0.5s
+          - OFF for at most 0.5s
+          - ON for at most 0.5s
+          - OFF for at most 0.5s
+          - ON for at most 0.5s
+          - OFF for at least 0.5s
         then:
           - logger.log: "Triple Click"
           - if:
               condition:
-                display.is_displaying_page: page1
+                and:
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
               then:
-                - display.page.show: page12
-                - script.execute:
-                    id: reset_page_script
-          - if:
-              condition:
-                display.is_displaying_page: page3
-              then:
-                - switch.toggle: ha_1_on
-                - script.execute:
-                    id: reset_page_script_no_timeout
-          - if:
-              condition:
-                display.is_displaying_page: page4
-              then:
-                - switch.toggle: ha_2_on
-                - script.execute:
-                    id: reset_page_script_no_timeout
-          - if:
-              condition:
-                display.is_displaying_page: page5
-              then:
-                - switch.toggle: ha_3_on
-                - script.execute:
-                    id: reset_page_script_no_timeout
-          - if:
-              condition:
-                display.is_displaying_page: page6
-              then:
-                - switch.toggle: ha_4_on
-                - script.execute:
-                    id: reset_page_script_no_timeout
-      - timing: #double click
-        - ON for at most 0.5s
-        - OFF for at most 0.5s
-        - ON for at most 0.5s
-        - OFF for at least 0.5s
+                - switch.turn_on: display_enabled
+              else:
+                - if:
+                    condition:
+                      display.is_displaying_page: page1
+                    then:
+                      - display.page.show: page12
+                      - script.execute:
+                          id: reset_page_script
+                - if:
+                    condition:
+                      display.is_displaying_page: page3
+                    then:
+                      - switch.toggle: ha_1_on
+                      - script.execute:
+                          id: reset_page_script_no_timeout
+                - if:
+                    condition:
+                      display.is_displaying_page: page4
+                    then:
+                      - switch.toggle: ha_2_on
+                      - script.execute:
+                          id: reset_page_script_no_timeout
+                - if:
+                    condition:
+                      display.is_displaying_page: page5
+                    then:
+                      - switch.toggle: ha_3_on
+                      - script.execute:
+                          id: reset_page_script_no_timeout
+                - if:
+                    condition:
+                      display.is_displaying_page: page6
+                    then:
+                      - switch.toggle: ha_4_on
+                      - script.execute:
+                          id: reset_page_script_no_timeout
+
+      - timing: # double click
+          - ON for at most 0.5s
+          - OFF for at most 0.5s
+          - ON for at most 0.5s
+          - OFF for at least 0.5s
         then:
           - logger.log: "Double Click"
           - if:
               condition:
-                display.is_displaying_page: page1
+                and:
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
               then:
-                - display.page.show: page10
-                - script.execute:
-                    id: reset_page_script
-          - if:
-              condition:
-                display.is_displaying_page: page2
-              then:
-                - switch.toggle: alarm_enabled
-          - if:
-              condition:
-                or:
-                  - display.is_displaying_page: page3
-                  - display.is_displaying_page: page4
-                  - display.is_displaying_page: page5
-                  - display.is_displaying_page: page6
-              then:
-                - lambda: |-
-                    auto haEnabled = id(ha_1_enabled);
-                    auto haAlarmed = id(ha_1_alarmed);
-                    int current_page_value = id(current_page_id);
-                    if (current_page_value == 4) {
-                      haEnabled = id(ha_2_enabled);
-                      haAlarmed = id(ha_2_alarmed);
-                    }
-                    else if (current_page_value == 5) {
-                      haEnabled = id(ha_3_enabled);
-                      haAlarmed = id(ha_3_alarmed);
-                    }
-                    else if (current_page_value == 6) {
-                      haEnabled = id(ha_4_enabled);
-                      haAlarmed = id(ha_4_alarmed);
-                    }
+                - switch.turn_on: display_enabled
+              else:
+                - if:
+                    condition:
+                      display.is_displaying_page: page1
+                    then:
+                      - display.page.show: page10
+                      - script.execute:
+                          id: reset_page_script
+                - if:
+                    condition:
+                      display.is_displaying_page: page2
+                    then:
+                      - switch.toggle: alarm_enabled
+                - if:
+                    condition:
+                      or:
+                        - display.is_displaying_page: page3
+                        - display.is_displaying_page: page4
+                        - display.is_displaying_page: page5
+                        - display.is_displaying_page: page6
+                    then:
+                      - lambda: |-
+                          auto haEnabled = id(ha_1_enabled);
+                          auto haAlarmed = id(ha_1_alarmed);
+                          int current_page_value = id(current_page_id);
+                          if (current_page_value == 4) {
+                            haEnabled = id(ha_2_enabled);
+                            haAlarmed = id(ha_2_alarmed);
+                          }
+                          else if (current_page_value == 5) {
+                            haEnabled = id(ha_3_enabled);
+                            haAlarmed = id(ha_3_alarmed);
+                          }
+                          else if (current_page_value == 6) {
+                            haEnabled = id(ha_4_enabled);
+                            haAlarmed = id(ha_4_alarmed);
+                          }
 
-                    if (haEnabled->state && haAlarmed->state) {
-                      haEnabled->turn_off();
-                      haAlarmed->turn_off();
-                    }
-                    else if (!haEnabled->state && haAlarmed->state) {
-                      haAlarmed->turn_off();
-                    }
-                    else if (!haEnabled->state && !haAlarmed->state) {
-                      haEnabled->turn_on();
-                    }
-                    else if (haEnabled->state && !haAlarmed->state) {
-                      haAlarmed->turn_on();
-                    }
-                    id(reset_page_script).execute();
-          - if:
-              condition:
-                display.is_displaying_page: page7
-              then:
-                - switch.toggle: sleep_timer_enabled
-      - timing: #single click
-        - ON for at most 0.5s
-        - OFF for at least 0.5s
+                          if (haEnabled->state && haAlarmed->state) {
+                            haEnabled->turn_off();
+                            haAlarmed->turn_off();
+                          }
+                          else if (!haEnabled->state && haAlarmed->state) {
+                            haAlarmed->turn_off();
+                          }
+                          else if (!haEnabled->state && !haAlarmed->state) {
+                            haEnabled->turn_on();
+                          }
+                          else if (haEnabled->state && !haAlarmed->state) {
+                            haAlarmed->turn_on();
+                          }
+                          id(reset_page_script).execute();
+                - if:
+                    condition:
+                      display.is_displaying_page: page7
+                    then:
+                      - switch.toggle: sleep_timer_enabled
+
+      - timing: # single click
+          - ON for at most 0.5s
+          - OFF for at least 0.5s
         then:
           - logger.log: "Single Click"
-          - lambda: |-
-              int current_page_value = id(current_page_id);
-              if (current_page_value == 1) { //clock page
-                if (id(alarm_enabled).state) {
-                  id(alarm_enabled).turn_off();
-                }
-                else {
-                  id(alarm_enabled).turn_on();
-                }
-              }
-              else if (current_page_value == 2) { //alarm clock page
-                int value = id(rotate_switch_single);
-                value += 1;
-                if (value > 2) {
-                  value = 0;
-                }
-                id(rotate_switch_single) = value;
-                if (value == 0) { //not in edit mode, start reset
-                  id(reset_page_script).execute();
-                }
-                else {
-                  id(reset_page_script).stop();
-                }
-              }
-              else if (current_page_value == 3 || current_page_value == 4 || current_page_value == 5 || current_page_value == 6) { //ha minute page
-                int value = id(rotate_switch_single);
-                value += 1;
-                if (value > 1) {
-                  value = 0;
-                }
-                id(rotate_switch_single) = value;
-                if (value == 0) { //not in edit mode, start reset
-                  id(reset_page_script).execute();
-                }
-                else {
-                  id(reset_page_script).stop();
-                }
-              }
-              else if (current_page_value == 7) { //sleep timer
-                int value = id(rotate_switch_single);
-                value += 1;
-                if (value > 1) {
-                  value = 0;
-                }
-                id(rotate_switch_single) = value;
-                if (value == 0) { //not in edit mode, start reset
-                  id(reset_page_script).execute();
-                }
-                else {
-                  id(reset_page_script).stop();
-                }
-              }
-              else if (current_page_value == 8) { //radio selector
-                int value = id(rotate_switch_single);
-                value += 1;
-                if (value > 1) {
-                  value = 0;
-                  id(alarm_on).turn_off();
-                }
-                else {
-                  id(alarm_on).turn_on();
-                }
-                id(rotate_switch_single) = value;
-                if (value == 0) { //not in edit mode, start reset
-                  id(reset_page_script).execute();
-                }
-                else {
-                  id(reset_page_script).stop();
-                }
-              }
-              else if (current_page_value == 10 || current_page_value == 12) { //contrast\volume page
-                id(reset_page_script_no_timeout).execute();
-              }
-              else if (current_page_value == 11) { //restart page
-                if (id(rotate_switch_single) == 1) {
-                  id(clock_restart_switch).turn_on();
-                }
-                else {
-                  id(reset_page_script_no_timeout).execute();
-                }
-              }
-              else if (current_page_value == 12) { //sleep timer page
-                id(reset_page_script_no_timeout).execute();
-              }
+          - if:
+              condition:
+                and:
+                  - switch.is_on: enable_display_on_interaction
+                  - switch.is_off: display_enabled
+              then:
+                - switch.turn_on: display_enabled
+              else:
+                - lambda: |-
+                    int current_page_value = id(current_page_id);
+                    if (current_page_value == 1) { //clock page
+                      if (id(alarm_enabled).state) {
+                        id(alarm_enabled).turn_off();
+                      }
+                      else {
+                        id(alarm_enabled).turn_on();
+                      }
+                    }
+                    else if (current_page_value == 2) { //alarm clock page
+                      int value = id(rotate_switch_single);
+                      value += 1;
+                      if (value > 2) {
+                        value = 0;
+                      }
+                      id(rotate_switch_single) = value;
+                      if (value == 0) { //not in edit mode, start reset
+                        id(reset_page_script).execute();
+                      }
+                      else {
+                        id(reset_page_script).stop();
+                      }
+                    }
+                    else if (current_page_value == 3 || current_page_value == 4 || current_page_value == 5 || current_page_value == 6) { //ha minute page
+                      int value = id(rotate_switch_single);
+                      value += 1;
+                      if (value > 1) {
+                        value = 0;
+                      }
+                      id(rotate_switch_single) = value;
+                      if (value == 0) { //not in edit mode, start reset
+                        id(reset_page_script).execute();
+                      }
+                      else {
+                        id(reset_page_script).stop();
+                      }
+                    }
+                    else if (current_page_value == 7) { //sleep timer
+                      int value = id(rotate_switch_single);
+                      value += 1;
+                      if (value > 1) {
+                        value = 0;
+                      }
+                      id(rotate_switch_single) = value;
+                      if (value == 0) { //not in edit mode, start reset
+                        id(reset_page_script).execute();
+                      }
+                      else {
+                        id(reset_page_script).stop();
+                      }
+                    }
+                    else if (current_page_value == 8) { //radio selector
+                      int value = id(rotate_switch_single);
+                      value += 1;
+                      if (value > 1) {
+                        value = 0;
+                        id(alarm_on).turn_off();
+                      }
+                      else {
+                        id(alarm_on).turn_on();
+                      }
+                      id(rotate_switch_single) = value;
+                      if (value == 0) { //not in edit mode, start reset
+                        id(reset_page_script).execute();
+                      }
+                      else {
+                        id(reset_page_script).stop();
+                      }
+                    }
+                    else if (current_page_value == 10 || current_page_value == 12) { //contrast\volume page
+                      id(reset_page_script_no_timeout).execute();
+                    }
+                    else if (current_page_value == 11) { //restart page
+                      if (id(rotate_switch_single) == 1) {
+                        id(clock_restart_switch).turn_on();
+                      }
+                      else {
+                        id(reset_page_script_no_timeout).execute();
+                      }
+                    }
+                    else if (current_page_value == 12) { //sleep timer page
+                      id(reset_page_script_no_timeout).execute();
+                    }
 
 select:
   - platform: template
@@ -885,16 +985,63 @@ select:
             ESP_LOGE("alarm_stream_name", "There is no option '%s'", x.c_str());
           }
   - platform: template
+    name: Alarm buzzer sound
+    id: alarm_buzzer_sound
+    optimistic: true
+    restore_value: true
+    set_action:
+      - rtttl.stop
+      - rtttl.play:
+          id: my_rtttl
+          rtttl: !lambda "return x;"
+    internal: true
+  - platform: template
+    name: Alarm buzzer name
+    id: alarm_buzzer_name
+    optimistic: true
+    restore_value: true
+    set_action:
+      - lambda: |-
+          ESP_LOGD("alarm_buzzer_name", "Option %s is selected", x.c_str());
+          auto index = id(alarm_buzzer_name).index_of(x.c_str());
+          if (index.has_value()) { //selected value has an index
+            ESP_LOGD("alarm_buzzer_name", "'%s' is at index: %d", x.c_str(), index.value());
+            auto option = id(alarm_buzzer_sound).at(index.value());
+            if (option.has_value()) { //alarm_buzzer_sound index has been found based on alarm_buzzer_name
+              auto value = option.value();
+              ESP_LOGD("alarm_buzzer_name", "Setting sound %s at alarm_buzzer_sound", value.c_str());
+
+              auto alarmBuzzerSound = id(alarm_buzzer_sound).make_call();
+              alarmBuzzerSound.set_option(value.c_str());
+              alarmBuzzerSound.perform();
+            } else {
+              ESP_LOGE("alarm_buzzer_name", "Index %d does not exist at alarm_buzzer_sound", index.has_value());
+            }
+          } else {
+            ESP_LOGE("alarm_buzzer_name", "There is no option '%s'", x.c_str());
+          }    
+  - platform: template
     name: Display mode
     id: display_mode
     options:
      - "Full"
      - "Minimum night only"
-     - "Minimum"
+     - "Minimum night contrast"
+     - "Minimum day contrast"
     optimistic: true
     restore_value: true
 
 switch:
+  - platform: template
+    id: display_enabled
+    name: "Display enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+  - platform: template
+    id: enable_display_on_interaction
+    name: "Enable Display on interaction"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
   - platform: template
     id: alarm_enabled
     name: "Alarm enabled"
@@ -1027,7 +1174,13 @@ switch:
       then:
       - wait_until:
           lambda: 'return (id(time_sync_done) == true);'
+      - switch.turn_on: display_enabled
+      - select.set:
+          id: display_mode
+          option: ${alarm_display_mode}
       - lambda: |-
+          //write settings immidiattly, so alarm_on is set if we crashes!
+          global_preferences->sync();
           const esphome::optional<std::string> url = id(media_player_alarm).make_call().get_media_url();
           if (url.has_value()) {
             ESP_LOGD("media_player_alarm", "Media has URL");
@@ -1042,6 +1195,7 @@ switch:
           }
     on_turn_off:
       then:
+        - switch.turn_off: alarm_on_local
         - if:
             condition:
               lambda: 'return (id(time_sync_done) == true);'
@@ -1049,6 +1203,34 @@ switch:
               - media_player.stop:
         - script.execute:
             id: set_alarm_last_off
+            
+  - name: "Alarm on local"
+    platform: template
+    id: alarm_on_local
+    optimistic: true
+    internal: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_off:
+      then:
+        - rtttl.stop
+    on_turn_on:
+      then:    
+        - while:
+            condition:
+              switch.is_on: alarm_on_local
+            then:
+              # Play the alarm sound on buzzer
+              - lambda: |-
+                  auto selectState = id(alarm_buzzer_sound).state.c_str();
+                  id(my_rtttl).play(selectState);
+                  ESP_LOGD("buzzer_alarm", "Playing buzzer sound %s", selectState);
+              # Wait until the alarm sound starts playing
+              - wait_until:
+                  rtttl.is_playing :
+              # Wait until the alarm sound stops playing
+              - wait_until:
+                  not:
+                    rtttl.is_playing:
 
   - platform: restart
     id: clock_restart_switch
@@ -1103,6 +1285,11 @@ display:
     pages:
       - id: page1 #clock page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1119,24 +1306,28 @@ display:
               displayMode = 1;
             }
             else if (index.value() == 2) {
-              //minimum
+              //minimum night contrast
               displayMode = 2;
             }
+            else if (index.value() == 3) {
+              //minimum day contrast
+              displayMode = 3;
+            }            
           }
 
           //determine font
           auto timeFont51 = id(robotomedium51);
           auto timeFont20 = id(robotomedium20);
-          if (displayMode == 1 || displayMode == 2) {
+          if (displayMode == 1 || displayMode == 2 || displayMode == 3) {
             timeFont51 = id(robotothin51);
             timeFont20 = id(robotothin20);
           }
 
-          if (!is_night_mode) {
-            alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
+          if ((is_night_mode && displayMode == 1) || displayMode == 2) {
+            alarmdisplay->set_contrast(id(screen_contrast_night).state/100);
           }
           else {
-            alarmdisplay->set_contrast(id(screen_contrast_night).state/100);
+            alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
           }
 
           //status bar
@@ -1230,7 +1421,29 @@ display:
           }
 
           if (it.get_width() == 128 && it.get_height() == 128) { //sh1107
-            it.strftime(0, (it.get_width()/2)-10, timeFont20, TextAlign::BOTTOM_LEFT, "%a", time);
+            //it.strftime(0, (it.get_width()/2)-10, timeFont20, TextAlign::BOTTOM_LEFT, "%a", time);
+            
+            // ESPTime in struct tm umwandeln (kein Pointer!)
+            struct tm c_time = time.to_c_tm();
+            
+            // Englischen Wochentag abfragen
+            char buffer[4];
+            strftime(buffer, sizeof(buffer), "%a", &c_time);
+            
+            // Deutsche Kürzel zuweisen
+            std::string tag;
+            if (strcmp(buffer, "Sun") == 0) tag = "So";
+            else if (strcmp(buffer, "Mon") == 0) tag = "Mo";
+            else if (strcmp(buffer, "Tue") == 0) tag = "Di";
+            else if (strcmp(buffer, "Wed") == 0) tag = "Mi";
+            else if (strcmp(buffer, "Thu") == 0) tag = "Do";
+            else if (strcmp(buffer, "Fri") == 0) tag = "Fr";
+            else if (strcmp(buffer, "Sat") == 0) tag = "Sa";
+            else tag = buffer;  // fallback
+            
+            // Anzeige
+            it.print(0, (it.get_width()/2)-10, timeFont20, TextAlign::BOTTOM_LEFT, tag.c_str());
+
             it.strftime(0, (it.get_width()/2)-10, timeFont20, TextAlign::TOP_LEFT, "%d-%m", time);
 
             string preZeroHour = "";
@@ -1267,7 +1480,7 @@ display:
             }
             else {
               it.strftime((it.get_width()/2)-(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_RIGHT, "%H", time);
-              if((displayMode == 1 || displayMode == 2) || shouldBlink) {
+              if((displayMode == 1 || displayMode == 2 || displayMode == 3) || shouldBlink) {
                 it.printf((it.get_width()/2), timeY, timeFont51, TextAlign::BOTTOM_CENTER, ":");
               }
               it.strftime((it.get_width()/2)+(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_LEFT, "%M", time);
@@ -1277,6 +1490,11 @@ display:
           id(current_page_id) = 1;
       - id: page2 #Alarm clock setting page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1326,6 +1544,11 @@ display:
           id(current_page_id) = 2;
       - id: page3 #HA 1 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           //https://gist.github.com/alvesvaren/767d9585f0ecbef18ef1c7c0492c4332
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
@@ -1393,6 +1616,11 @@ display:
           id(current_page_id) = 3;
       - id: page4 #HA 2 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1459,6 +1687,11 @@ display:
           id(current_page_id) = 4;
       - id: page5 #HA 3 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1525,6 +1758,11 @@ display:
           id(current_page_id) = 5;
       - id: page6 #HA 4 page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1591,6 +1829,11 @@ display:
           id(current_page_id) = 6;
       - id: page7 #Sleep timer
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1615,6 +1858,11 @@ display:
           id(current_page_id) = 7;
       - id: page8 #Radio selector
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1645,6 +1893,11 @@ display:
           id(current_page_id) = 8;
       - id: page10 #Contrast page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           bool is_night_mode = !id(time_sunrise);
 
           if (!is_night_mode) {
@@ -1668,6 +1921,11 @@ display:
           id(current_page_id) = 10;
       - id: page11 #Restart page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           it.printf(it.get_width()/2, 0, id(robotomedium20), TextAlign::TOP_CENTER, "Restart?");
           if (id(rotate_switch_single) == 0) { // check active
             it.printf(it.get_width()/2, it.get_height(), id(robotomedium40), TextAlign::BOTTOM_RIGHT, "\U000F0C52");
@@ -1681,6 +1939,11 @@ display:
           id(current_page_id) = 11;
       - id: page12 #Volume page
         lambda: |-
+          if (!id(display_enabled).state) {
+            // Turn the whole display off
+            it.fill(COLOR_OFF);
+            return;
+          }
           it.printf(0, (it.get_height()/2), id(robotomedium20), TextAlign::CENTER_LEFT, "\U000F057E");
           int value = id(alarm_volume).state;
           it.printf(it.get_width()/2, (it.get_height()/2), id(robotomedium40), TextAlign::CENTER, "%i", value);
