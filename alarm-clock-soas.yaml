@@ -1093,6 +1093,8 @@ switch:
     entity_category: config
     on_turn_on:
       - lambda:
+          //sync preferences now to flash, so alarm_on is set if we crashes!
+          global_preferences->sync();      
           int iTimestampForAlarm = id(ntp).now().timestamp;
           std::string sTimestampForAlarm = to_string(iTimestampForAlarm);
           ESP_LOGD("alarm_on", "timestampForAlarm %s", sTimestampForAlarm.c_str());
