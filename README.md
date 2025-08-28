@@ -2,7 +2,7 @@
 
 
 |                                                                     |                             |
-| ------------------------------------------------------------------- | --------------------------- |
+|---------------------------------------------------------------------|-----------------------------|
 | <img src="images/SOASClocks.jpeg" alt="SOAS" style="width:700px;"/> | ![Wake UP](images/soas.png) |
 
 
@@ -28,6 +28,7 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 * Local file as fallback when internet is not available
 * Volume increase of the alarm after a defined time of alarming
 * Local file as fallback when internet is not available
+* Time sync with GPS for when internet is not available (Optional)
 
 ## Requirements
 * < €25,-
@@ -47,6 +48,7 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 ## Optional
 
 * A bit of soldering is not required, but the ground has to be shared so it is nice to solder that one. Depending on your rotary button, you maybe also need to do a little bit of soldering
+* [NEO-6M](https://nl.aliexpress.com/item/1005006816514975.html) ~3,- for GPS time sync, this link requires soldering
 
 ## Installation
 
@@ -55,14 +57,14 @@ This alarm clock is customizable, full featured and smart for under €35,-. It'
 Connect all dupont cables corresponding the schema's below:
 
 | SH1106 / SH1107 | ESP32  |
-| --------------- | ------ |
+|-----------------|--------|
 | VCC             | 3v     |
 | GND             | GND    |
 | SCL             | GPIO47 |
 | SDA             | GPIO48 |
 
 | Rotary Button | ESP32  |
-| ------------- | ------ |
+|---------------|--------|
 | A             | GPIO9  |
 | B             | GPIO10 |
 | C             | GND    |
@@ -70,26 +72,26 @@ Connect all dupont cables corresponding the schema's below:
 | E             | GPIO8  |
 
 | MAX98357a | ESP32   |
-| --------- | ------- |
-| LRC       | GPIO3   |
-| BLCK      | GPIO1   |
-| DIN       | GPIO2   |
-| GND       | GND     |
-| Vin       | 5v / 3v |
-| MAX98357a | ESP32   |
-| --------- | ------- |
+|-----------|---------|
 | LRC       | GPIO3   |
 | BLCK      | GPIO1   |
 | DIN       | GPIO2   |
 | GND       | GND     |
 | Vin       | 5v / 3v |
 
+
 | Flat head button | ESP32 |
-| ---------------- | ----- |
+|------------------|-------|
 | Switch           | GPIO4 |
 | GND              | GND   |
 
-Include the config below in your YAML. This one is made for a `ESP32-S3-N16R8`:
+| NEO-6M | ESP32       |
+|--------|-------------|
+| TX     | GPIO44 (RX) |
+| RX     | GPIO43 (TX) |
+| VCC    | 3v          |
+| GND    | GND         |
+
 Include the config below in your YAML. This one is made for a `ESP32-S3-N16R8`:
 
 ```yaml
@@ -113,8 +115,19 @@ substitutions:
   language: "EN" #NL and DE are also supported
   alarm_off_button_single_click_time: 1s #max time in seconds, which the alarm off button can be pressed to recognize the press
 
+  #Add this for the NEO-6M
+  gps_tx_pin: GPIO43
+  gps_rx_pin: GPIO44
+  timezone: Europe/Amsterdam
+
 packages:
+  #Use this without GPS
   remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main
+
+  #Use this when using the NEO-6M
+  remote_package_files:
+    url: https://github.com/skons/soas
+    files: [alarm-clock-soas.yaml, alarm-clock-gps.yml]
 
 time:
   - id: !extend ntp
@@ -128,10 +141,11 @@ select:
   - id: !extend alarm_stream_url
     options:
       - "mp3 url to radio" #AAC seams to be making SOAS crash, FLAC or WAV will probably also work
-      - "mp3 url to radio" #AAC seams to be making SOAS crash, FLAC or WAV will probably also work
+      - "mp3 url to radio #2"
   - id: !extend alarm_stream_name
     options:
       - "Friendly name of the radio station"
+      - "Friendly name of the radio station #2"
 
 esphome:
   name: alarm-clock-soas
@@ -256,6 +270,7 @@ A few options are not (yet) available on the alarm self:
 * Alarm volume increase duration
 * Alarm volume increase
 * Alarm volume increase duration
+* Night mode, which is done by the sun long lat by default. Nigh mode automatically switched off will not switch the mode without a Home Assistant automation for instance
 
 Use Home Assistant to configure these options.
 
@@ -296,15 +311,16 @@ Some SH1107 display modules support both I2C and SPI interface modes (one mode a
 
 * Ability to save streamed url to local instead of having a list of streams (https://alshowto.com/home-assistant-and-esphome-how-to-series-1-step-3-make-a-simple-media-speaker/, see things that are quirky)
 
-## Known issues
-* If internet is down and SOAS decides to restart, time will not be set
-
 ## Changelog
 
 ### 2025.x.x.x
 - Configurable max alarm off button time
 - write preferences (like alarm_on) immediately to flash when alarm goes off (alarm_on set to true).
   If the clock would crash, it will restore alarm_on (true) and restores the alarm.
+- Optional GPS time sync with NEO-6M
+- Night mode switch with Night mode automatic switch
+- `time_sync_done` is now set by checking the local clock
+- `check_alarms` script is now single mode
 
 ### 2025.8.25.2
   - Fixed that the sleep timer disabled the alarm, not the new music switch

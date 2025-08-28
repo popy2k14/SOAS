@@ -1,3 +1,9 @@
+esphome:
+  on_boot:
+    - priority: 800
+      then:
+        - script.execute: time_sync_wait
+
 logger:
   on_message:
     level: ERROR
@@ -151,8 +157,6 @@ globals:
   - id: time_sync_done
     type: bool
     initial_value: "false"
-  - id: time_sunrise
-    type: bool
   - id: current_page_id
     type: int
     initial_value: "1"
@@ -213,10 +217,6 @@ interval:
 time:
   - id: ntp
     platform: sntp
-    on_time_sync:
-      then:
-        lambda: |-
-          id(time_sync_done) = true;
     on_time:
       - seconds: /5
         minutes: "*"
@@ -228,15 +228,15 @@ time:
           - script.execute: check_alarms
           - if:
               condition:
-                - sun.is_above_horizon:
+                - switch.is_on: night_mode_automatically
               then:
-                - globals.set:
-                    id: time_sunrise
-                    value: "true"
-              else:
-                - globals.set:
-                    id: time_sunrise
-                    value: "false"
+                - if:
+                    condition:
+                        - sun.is_above_horizon:
+                    then:
+                      - switch.turn_off: night_mode
+                    else:
+                      - switch.turn_on: night_mode
 
 sun:
   latitude: ${sun_latitude}
@@ -1094,7 +1094,7 @@ switch:
     on_turn_on:
       - lambda:
           //sync preferences now to flash, so alarm_on is set if we crashes!
-          global_preferences->sync();      
+          global_preferences->sync();
           int iTimestampForAlarm = id(ntp).now().timestamp;
           std::string sTimestampForAlarm = to_string(iTimestampForAlarm);
           ESP_LOGD("alarm_on", "timestampForAlarm %s", sTimestampForAlarm.c_str());
@@ -1232,6 +1232,18 @@ switch:
     optimistic: true
     restore_mode: ALWAYS_ON
     entity_category: config
+  - name: "Night mode"
+    platform: template
+    id: night_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+  - name: "Night mode automatically"
+    platform: template
+    id: night_mode_automatically
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
 
 display:
   - platform: ssd1306_i2c
@@ -1250,7 +1262,7 @@ display:
           char seconds[15];
           strftime(seconds, sizeof(seconds), "%S", localtime(&currentTime));
           int shouldBlink = atoi(seconds) % 2;
-          bool is_night_mode = !id(time_sunrise);
+          bool is_night_mode = id(night_mode).state;
           bool showClock = id(clock_on_display).state;
           std::string language = "${language}";
 
@@ -1818,7 +1830,7 @@ display:
           id(current_page_id) = 8;
       - id: page10 #Contrast page
         lambda: |-
-          bool is_night_mode = !id(time_sunrise);
+          bool is_night_mode = id(night_mode).state;
 
           if (!is_night_mode) {
             alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
@@ -2023,7 +2035,7 @@ script:
             }
           }
           else if (current_page_id_value == 10) { //alarm contrast page
-            if (id(time_sunrise)) {
+            if (!id(night_mode).state) {
               int screen_contrast_day_value = id(screen_contrast_day).state;
               if (clockwise == true) {
                 screen_contrast_day_value += 5;
@@ -2298,7 +2310,7 @@ script:
             }
           }
   - id: check_alarms
-    mode: restart
+    mode: single
     then:
       - lambda: |-
           time_t currentTimeForAlarm = id(ntp).now().timestamp;
@@ -2502,3 +2514,25 @@ script:
             ESP_LOGD("play_url", "Setting stream url %s", selectState);
           }
           id(media_player_stopped) = 0;
+  - id: time_sync_wait #this script calls itself until time is synced. if it was in boot, with delay, this script is all what the device will be doing
+    mode: queued
+    then:
+      - delay: 1000ms
+      - lambda:
+          std::time_t now;
+          struct tm now_tm;
+          if (id(time_sync_done) == false) {
+            now = std::time(NULL);
+            now_tm = *localtime(&now);
+            if (now > 0 && (now_tm.tm_year + 1900) > 2019) {
+              ESP_LOGD("time_sync_wait", "Time is synced");
+              id(time_sync_done) = true;
+            }
+            else {
+              ESP_LOGD("time_sync_wait", "Time not synced, waiting %i", now);
+              id(time_sync_wait).execute();
+            }
+          }
+          else {
+            ESP_LOGD("time_sync_wait", "Time already synced");
+          }
