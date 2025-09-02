@@ -28,7 +28,7 @@ media_player:
           ESP_LOGI("media", "Playback finished! (diff=%d sec)", diff);
           if ((diff < 4) && (id(alarm_on).state)) {
             ESP_LOGW("media", "Alarm is ON and stream failed, playing RTTTL fallback!");
-            id(alarm_on_local).turn_on();            
+            id(alarm_on_local).turn_on();
           }
 
 output:
@@ -147,6 +147,12 @@ globals:
     type: int
     restore_value: no
     initial_value: "0"
+  - id: contrast_current
+    type: float
+    initial_value: '1.0'
+  - id: contrast_target
+    type: float
+    initial_value: '1.0'    
     
 
 interval:
@@ -183,8 +189,8 @@ time:
     id: ntp
     on_time_sync:
       then:
-        lambda: |-
-          id(time_sync_done) = true;
+        - lambda: |-
+            id(time_sync_done) = true;
     on_time:
       - seconds: 0,30
         minutes: "*"
@@ -192,15 +198,15 @@ time:
           - script.execute: check_alarms
           - if:
               condition:
-                - sun.is_above_horizon:
+                - switch.is_on: night_mode_automatically
               then:
-                - globals.set:
-                    id: time_sunrise
-                    value: "true"
-              else:
-                - globals.set:
-                    id: time_sunrise
-                    value: "false"
+                - if:
+                    condition:
+                        - sun.is_above_horizon:
+                    then:
+                      - switch.turn_off: night_mode
+                    else:
+                      - switch.turn_on: night_mode
 
 sun:
   latitude: ${sun_latitude}
@@ -520,10 +526,12 @@ sensor:
         - if:
             condition:
               and:
-                - switch.is_on: enable_display_on_interaction
-                - switch.is_off: display_enabled
+                - switch.is_on: display_on_off_automatically
+                - switch.is_off: display_on
             then:
-              - switch.turn_on: display_enabled
+              - switch.turn_on: display_on
+              - script.execute:
+                  id: display_off_script
             else:
               - if:
                   condition:
@@ -567,10 +575,12 @@ sensor:
         - if:
             condition:
               and:
-                - switch.is_on: enable_display_on_interaction
-                - switch.is_off: display_enabled
+                - switch.is_on: display_on_off_automatically
+                - switch.is_off: display_on
             then:
-              - switch.turn_on: display_enabled
+              - switch.turn_on: display_on
+              - script.execute:
+                  id: display_off_script
             else:
               - if:
                   condition:
@@ -626,10 +636,12 @@ binary_sensor:
           - if:
               condition:
                 and:
-                  - switch.is_on: enable_display_on_interaction
-                  - switch.is_off: display_enabled
+                  - switch.is_on: display_on_off_automatically
+                  - switch.is_off: display_on
               then:
-                - switch.turn_on: display_enabled
+                - switch.turn_on: display_on
+                - script.execute:
+                    id: display_off_script
               else:
                 - if:
                     condition:
@@ -654,10 +666,12 @@ binary_sensor:
           - if:
               condition:
                 and:
-                  - switch.is_on: enable_display_on_interaction
-                  - switch.is_off: display_enabled
+                  - switch.is_on: display_on_off_automatically
+                  - switch.is_off: display_on
               then:
-                - switch.turn_on: display_enabled
+                - switch.turn_on: display_on
+                - script.execute:
+                    id: display_off_script                
               else:
                 - if:
                     condition:
@@ -713,10 +727,12 @@ binary_sensor:
           - if:
               condition:
                 and:
-                  - switch.is_on: enable_display_on_interaction
-                  - switch.is_off: display_enabled
+                  - switch.is_on: display_on_off_automatically
+                  - switch.is_off: display_on
               then:
-                - switch.turn_on: display_enabled
+                - switch.turn_on: display_on
+                - script.execute:
+                    id: display_off_script
               else:
                 - if:
                     condition:
@@ -737,10 +753,12 @@ binary_sensor:
           - if:
               condition:
                 and:
-                  - switch.is_on: enable_display_on_interaction
-                  - switch.is_off: display_enabled
+                  - switch.is_on: display_on_off_automatically
+                  - switch.is_off: display_on
               then:
-                - switch.turn_on: display_enabled
+                - switch.turn_on: display_on
+                - script.execute:
+                    id: display_off_script
               else:
                 - if:
                     condition:
@@ -788,10 +806,12 @@ binary_sensor:
           - if:
               condition:
                 and:
-                  - switch.is_on: enable_display_on_interaction
-                  - switch.is_off: display_enabled
+                  - switch.is_on: display_on_off_automatically
+                  - switch.is_off: display_on
               then:
-                - switch.turn_on: display_enabled
+                - switch.turn_on: display_on
+                - script.execute:
+                    id: display_off_script
               else:
                 - if:
                     condition:
@@ -858,10 +878,12 @@ binary_sensor:
           - if:
               condition:
                 and:
-                  - switch.is_on: enable_display_on_interaction
-                  - switch.is_off: display_enabled
+                  - switch.is_on: display_on_off_automatically
+                  - switch.is_off: display_on
               then:
-                - switch.turn_on: display_enabled
+                - switch.turn_on: display_on
+                - script.execute:
+                    id: display_off_script
               else:
                 - lambda: |-
                     int current_page_value = id(current_page_id);
@@ -1026,22 +1048,59 @@ select:
     options:
      - "Full"
      - "Minimum night only"
-     - "Minimum night contrast"
-     - "Minimum day contrast"
+     - "Minimum"
     optimistic: true
     restore_value: true
 
 switch:
-  - platform: template
-    id: display_enabled
-    name: "Display enabled"
+  - name: "Display on"
+    platform: template
+    id: display_on
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
-  - platform: template
-    id: enable_display_on_interaction
-    name: "Enable Display on interaction"
+    on_turn_on:
+      then:
+        - script.execute:
+            id: display_off_script
+  - name: "Display on/off automatically"
+    platform: template
+    id: display_on_off_automatically
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+      then:
+        - script.execute:
+            id: display_off_script
+    on_turn_off:
+      then:
+        - script.stop: display_off_script
+        - switch.turn_on: display_on
+  - name: "Display off, on snooze allowed"
+    platform: template
+    id: display_off_on_snooze_allowed
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      then:
+        - script.execute:
+            id: display_off_script
+    on_turn_off:
+      then:
+        - script.execute:
+            id: display_off_script
+#  - name: "Display off, on music allowed"
+#    platform: template
+#    id: display_off_on_music_allowed
+#    optimistic: true
+#    restore_mode: RESTORE_DEFAULT_OFF
+#    on_turn_on:
+#      then:
+#        - script.execute:
+#            id: display_off_script    
+#    on_turn_off:
+#      then:
+#        - script.execute:
+#            id: display_off_script    
   - platform: template
     id: alarm_enabled
     name: "Alarm enabled"
@@ -1077,6 +1136,8 @@ switch:
                   else:
                     - switch.turn_off: snooze_on
     on_turn_off:
+      - script.execute:
+          id: display_off_script    
       - script.execute:
           id: set_snooze_timestamp
           timestamp: 0
@@ -1174,7 +1235,7 @@ switch:
       then:
       - wait_until:
           lambda: 'return (id(time_sync_done) == true);'
-      - switch.turn_on: display_enabled
+      - switch.turn_on: display_on
       - select.set:
           id: display_mode
           option: ${alarm_display_mode}
@@ -1195,6 +1256,8 @@ switch:
           }
     on_turn_off:
       then:
+        - script.execute:
+            id: display_off_script
         - switch.turn_off: alarm_on_local
         - if:
             condition:
@@ -1226,7 +1289,7 @@ switch:
                   ESP_LOGD("buzzer_alarm", "Playing buzzer sound %s", selectState);
               # Wait until the alarm sound starts playing
               - wait_until:
-                  rtttl.is_playing :
+                  rtttl.is_playing:
               # Wait until the alarm sound stops playing
               - wait_until:
                   not:
@@ -1272,6 +1335,18 @@ switch:
     optimistic: true
     restore_mode: ALWAYS_ON
     entity_category: config
+  - name: "Night mode"
+    platform: template
+    id: night_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+  - name: "Night mode automatically"
+    platform: template
+    id: night_mode_automatically
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
 
 display:
   - platform: ssd1306_i2c
@@ -1285,7 +1360,7 @@ display:
     pages:
       - id: page1 #clock page
         lambda: |-
-          if (!id(display_enabled).state) {
+          if (!id(display_on).state) {
             // Turn the whole display off
             it.fill(COLOR_OFF);
             return;
@@ -1295,7 +1370,7 @@ display:
           char seconds[15];
           strftime(seconds, sizeof(seconds), "%S", localtime(&currentTime));
           int shouldBlink = atoi(seconds) % 2;
-          bool is_night_mode = !id(time_sunrise);
+          bool is_night_mode = id(night_mode).state;
           bool showClock = id(clock_on_display).state;
 
           auto index = id(display_mode).active_index();
@@ -1306,29 +1381,25 @@ display:
               displayMode = 1;
             }
             else if (index.value() == 2) {
-              //minimum night contrast
+              //minimum
               displayMode = 2;
             }
-            else if (index.value() == 3) {
-              //minimum day contrast
-              displayMode = 3;
-            }            
           }
 
           //determine font
           auto timeFont51 = id(robotomedium51);
           auto timeFont20 = id(robotomedium20);
-          if (displayMode == 1 || displayMode == 2 || displayMode == 3) {
+          if (displayMode == 1 || displayMode == 2) {
             timeFont51 = id(robotothin51);
             timeFont20 = id(robotothin20);
           }
 
-          if ((is_night_mode && displayMode == 1) || displayMode == 2) {
-            alarmdisplay->set_contrast(id(screen_contrast_night).state/100);
+          if (!is_night_mode) {
+            id(contrast_target) = id(screen_contrast_day).state / 100.0f;
+          } else {
+            id(contrast_target) = id(screen_contrast_night).state / 100.0f;
           }
-          else {
-            alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
-          }
+          id(smooth_contrast).execute();
 
           //status bar
           if (id(alarm_on).state && !id(sleep_timer_on).state) {
@@ -1480,7 +1551,7 @@ display:
             }
             else {
               it.strftime((it.get_width()/2)-(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_RIGHT, "%H", time);
-              if((displayMode == 1 || displayMode == 2 || displayMode == 3) || shouldBlink) {
+              if((displayMode == 1 || displayMode == 2) || shouldBlink) {
                 it.printf((it.get_width()/2), timeY, timeFont51, TextAlign::BOTTOM_CENTER, ":");
               }
               it.strftime((it.get_width()/2)+(calculated_width/2), timeY, timeFont51, TextAlign::BOTTOM_LEFT, "%M", time);
@@ -1490,7 +1561,7 @@ display:
           id(current_page_id) = 1;
       - id: page2 #Alarm clock setting page
         lambda: |-
-          if (!id(display_enabled).state) {
+          if (!id(display_on).state) {
             // Turn the whole display off
             it.fill(COLOR_OFF);
             return;
@@ -1544,11 +1615,6 @@ display:
           id(current_page_id) = 2;
       - id: page3 #HA 1 page
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
           //https://gist.github.com/alvesvaren/767d9585f0ecbef18ef1c7c0492c4332
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
@@ -1616,11 +1682,6 @@ display:
           id(current_page_id) = 3;
       - id: page4 #HA 2 page
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1687,11 +1748,6 @@ display:
           id(current_page_id) = 4;
       - id: page5 #HA 3 page
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1758,11 +1814,6 @@ display:
           id(current_page_id) = 5;
       - id: page6 #HA 4 page
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1829,11 +1880,6 @@ display:
           id(current_page_id) = 6;
       - id: page7 #Sleep timer
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1858,11 +1904,6 @@ display:
           id(current_page_id) = 7;
       - id: page8 #Radio selector
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
           auto time = id(ntp).now();
           time_t currentTime = time.timestamp;
           char seconds[15];
@@ -1893,12 +1934,7 @@ display:
           id(current_page_id) = 8;
       - id: page10 #Contrast page
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
-          bool is_night_mode = !id(time_sunrise);
+          bool is_night_mode = id(night_mode).state;
 
           if (!is_night_mode) {
             alarmdisplay->set_contrast(id(screen_contrast_day).state/100);
@@ -1921,11 +1957,6 @@ display:
           id(current_page_id) = 10;
       - id: page11 #Restart page
         lambda: |-
-          if (!id(display_enabled).state) {
-            // Turn the whole display off
-            it.fill(COLOR_OFF);
-            return;
-          }
           it.printf(it.get_width()/2, 0, id(robotomedium20), TextAlign::TOP_CENTER, "Restart?");
           if (id(rotate_switch_single) == 0) { // check active
             it.printf(it.get_width()/2, it.get_height(), id(robotomedium40), TextAlign::BOTTOM_RIGHT, "\U000F0C52");
@@ -1939,7 +1970,7 @@ display:
           id(current_page_id) = 11;
       - id: page12 #Volume page
         lambda: |-
-          if (!id(display_enabled).state) {
+          if (!id(display_on).state) {
             // Turn the whole display off
             it.fill(COLOR_OFF);
             return;
@@ -2113,7 +2144,7 @@ script:
             }
           }
           else if (current_page_id_value == 10) { //alarm contrast page
-            if (id(time_sunrise)) {
+            if (!id(night_mode).state) {
               int screen_contrast_day_value = id(screen_contrast_day).state;
               if (clockwise == true) {
                 screen_contrast_day_value += 5;
@@ -2184,11 +2215,35 @@ script:
   - id: reset_page_script_no_timeout
     mode: restart
     then:
+      - script.execute:
+          id: display_off_script
       - display.page.show: !lambda
           id(rotate_switch_single) = 0;
           id(rotate_switch_double) = 0;
           ESP_LOGD("reset_page_script", "Reset page executed");
           return id(page1);
+  - id: display_off_script
+    mode: restart
+    then:
+      - delay: 10s
+      - if:
+          condition:
+            and:
+              - switch.is_on: display_on_off_automatically
+              - switch.is_off: alarm_on
+              - lambda: 'return (id(time_sync_done) == true);'
+              - or:
+                  - and:
+                      - switch.is_on: display_off_on_snooze_allowed
+                      - switch.is_on: snooze_on
+                  - switch.is_off: snooze_on
+#              - or:
+#                  - and:
+#                      - switch.is_on: display_off_on_music_allowed
+#                      - switch.is_on: music_on
+#                  - switch.is_off: music_on
+          then:
+            - switch.turn_off: display_on
   - id: set_ha_0_trigger_time_script
     mode: restart
     then:
@@ -2486,3 +2541,18 @@ script:
             - lambda: 'return { (id(time_sync_done) == true) };'
           then:
             - component.update: snooze_time
+  - id: smooth_contrast
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return fabs(id(contrast_current) - id(contrast_target)) > 0.01;'
+          then:
+            - lambda: |-
+                float step = 0.02;
+                if (id(contrast_current) < id(contrast_target))
+                  id(contrast_current) = std::min(id(contrast_current) + step, id(contrast_target));
+                else
+                  id(contrast_current) = std::max(id(contrast_current) - step, id(contrast_target));
+                alarmdisplay->set_contrast(id(contrast_current));
+            - delay: 50ms          

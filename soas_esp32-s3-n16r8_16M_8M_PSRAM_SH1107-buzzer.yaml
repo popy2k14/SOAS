@@ -1,0 +1,175 @@
+substitutions:
+  display_model: "SH1107 128x128" #use "SH1106 128x64" for SH1106
+  display_rotation: "270" #use 0 for SH1106
+  sun_latitude: xxx
+  sun_longitude: xxx
+  i2c_sda: GPIO48
+  i2c_scl: GPIO47
+  i2s_lrclk_pin: GPIO12
+  i2s_bclk_pin: GPIO1
+  i2s_dout_pin: GPIO2
+  pin_a: GPIO9
+  pin_b: GPIO10
+  alarm_off_button_pin: GPIO4
+  rotary_button_pin: GPIO8
+  alarm_off_button_single_click_time: 3s
+  alarm_off_button_long_click_time: 15s
+  buzzer_pin: GPIO21
+  buzzer_gain: 50%
+
+# Basic Config
+esphome:
+  comment: "SOAS with ESP32-S3-N16R8"
+  on_boot:
+    - priority: 600
+      then: # RTC and clicking workaround
+        # read the RTC time once when the system boots
+        - ds1307.read_time:
+            id: ds1307_time
+        # time readed succesfully
+        - if:
+            condition:
+              time.has_time:
+            then:
+              - lambda: |-
+                  id(time_sync_done) = true;
+        # clicking workaround 
+        - if:
+            condition:
+              - switch.is_on: alarm_on
+            then: #restore playback
+              - logger.log: "Alarm was on before reboot, restoring playback when wifi is connected"
+              - wait_until:
+                  condition:
+                    wifi.connected:
+                  timeout: 30s
+              - switch.turn_on: alarm_on
+            else: #clicking workaround
+              - logger.log: "Alarm was off before reboot, preventing clicking sound"
+              - wait_until:
+                  condition:
+                    wifi.connected:
+                  timeout: 30s
+              - media_player.volume_set: 0
+              - media_player.play_media: !lambda return id(alarm_stream_url).state.c_str();
+              - wait_until:
+                  media_player.is_playing :
+              - media_player.stop:
+              - media_player.volume_set: !lambda "return (id(alarm_volume).state/100);"
+  platformio_options: #PSRAM stuff
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.arduino.memory_type: qio_opi  
+
+# ESP32-S3-N16R8 with 16MB Flash & 8 MB PRAM
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  cpu_frequency: 240MHz
+  flash_size: 16MB
+  partitions: "/config/esphome/default_16MB.csv"
+  framework:
+    type: arduino
+    #advanced:
+    #  enable_idf_experimental_features: yes
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+#include device_base yaml
+#packages:
+#  remote_package_files:
+#    url: https://github.com/skons/soas
+#    files: [alarm-clock-soas.yaml, alarm-clock-ds1307.yml]
+
+packages:
+  device_base: !include /config/esphome/common/device_base.yaml
+  soas_local: !include /config/esphome/common/devices/alarm-clock-soas-buzzer.yaml
+  soas_local_ds1307: !include /config/esphome/common/devices/alarm-clock-ds1307.yaml
+  #remote_package_shorthand: github://skons/soas/alarm-clock-soas.yaml@main  
+
+time:
+  - id: !extend ntp
+    timezone: Europe/Amsterdam
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+      - 2.pool.ntp.org
+
+
+#AAC seams to be making SOAS crash
+select:
+  - id: !extend alarm_stream_name
+    options:  
+      - "Life Radio"
+      - "Hitradio OE3"
+      - "Lounge FM"
+      - "HouseTime FM"
+      - "RauteMusik CLUB"
+      - "FM4"
+      - "kronehit"
+      - "OE1"
+      - "Radio OberOE"
+      - "Adrift"
+      - "Clangy"
+      - "Clarity"
+      - "Countertop"
+      - "Focus"
+      - "Glimmer"
+      - "Nightstand"
+      - "Nimble"
+      - "Orcas"
+      - "Porchlight"
+      - "Pulsar"
+      - "Rainier"
+      - "Simple Alarm"
+      - "Simple Timer"
+      - "Squared Waves"
+  - id: !extend alarm_stream_url
+    options:  
+      - "http://stream1.liferadio.at/"
+      - "https://orf-live.ors-shoutcast.at/oe3-q2a"
+      - "https://s35.derstream.net/100austria.mp3"
+      - "http://listen.housetime.fm/tunein-mp3"
+      - "http://club-high.rautemusik.fm/"
+      - "https://orf-live.ors-shoutcast.at/fm4-q1a"
+      - "http://onair.krone.at/kronehit.mp3"
+      - "http://orf-live.ors-shoutcast.at/oe1-q1a"
+      - "https://orf-live.ors-shoutcast.at/ooe-q1a"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Adrift_system_alerts_soothing_01.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Clangy_system_alerts_atonal_02.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Clarity_system_alerts_melodic_05.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Countertop_system_alerts_repetitive_04.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Focus_system_alerts_melodic_03.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Glimmer_system_alerts_melodic_06.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Nightstand_system_alerts_repetitive_01.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Nimble_system_alerts_melodic_07.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Orcas_system_alerts_soothing_06.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Porchlight_system_alerts_atonal_03.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Pulsar_system_alerts_rhythmic_02.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Rainier_system_alerts_musical_02.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Simple_Alarm_system_alerts_melodic_01.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Simple_Timer_system_alerts_melodic_02.mp3"
+      - "http://192.168.0.8:8123/local/media/echo_alarm_looped/Squared_Waves_system_alerts_alarming_03.mp3"
+
+    #buzzer sounds - do not use too much, this crash SOAS
+  - id: !extend alarm_buzzer_sound
+    options:
+      - "Mario:d=4,o=5,b=100:16e6,16e6,32p,8e6,16c6,8e6,8g6,8p,8g,8p,8c6,16p,8g,16p,8e,16p,8a,8b,16a#,8a,16g.,16e6,16g6,8a6,16f6,8g6,8e6,16c6,16d6,8b,16p,8c6,16p,8g,16p,8e,16p,8a,8b,16a#,8a,16g.,16e6,16g6,8a6,16f6,8g6,8e6,16c6,16d6,8b,8p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16g#,16a,16c6,16p,16a,16c6,16d6,8p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16c7,16p,16c7,16c7,p,16g6,16f#6,16f6,16d#6,16p,16e6,16p,16g#,16a,16c6,16p,16a,16c6,16d6,8p,16d#6,8p,16d6,8p,16c6"
+      - "The Simpsons:d=4,o=5,b=160:c.6,e6,f#6,8a6,g.6,e6,c6,8a,8f#,8f#,8f#,2g,8p,8p,8f#,8f#,8f#,8g,a#.,8c6,8c6,8c6,c6"
+      - "Two short tones:d=4,o=5,b=100:16e6,16e6"
+
+  - id: !extend alarm_buzzer_name
+    options:
+      - "Mario"
+      - "The Simpsons"
+      - "Two short tones"
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: True # Whether to send scan-request packets to devices to gather more info (like devicename)
+#    interval: 320ms # suggested 211ms # default 320ms
+#    window:   300ms # suggested 120ms # default 30ms
+
+bluetooth_proxy:
+  active: true
