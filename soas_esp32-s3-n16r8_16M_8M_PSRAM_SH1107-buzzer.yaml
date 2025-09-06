@@ -16,6 +16,12 @@ substitutions:
   alarm_off_button_long_click_time: 15s
   buzzer_pin: GPIO21
   buzzer_gain: 50%
+  ldr_pin: GPIO14
+  aab_min: 0
+  aab_max: 255
+  aab_add: 10
+  aab_scale: 2.5
+  aab_offset: 0
 
 # Basic Config
 esphome:
