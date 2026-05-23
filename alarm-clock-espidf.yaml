@@ -51,6 +51,13 @@ media_player:
     on_idle:
       - logger.log: "Playback finished!"
 
+audio:
+  codecs:
+    flac:
+    mp3:
+    opus:
+    wav:
+
 switch:
   - id: !extend alarm_on_local
     on_turn_off:
