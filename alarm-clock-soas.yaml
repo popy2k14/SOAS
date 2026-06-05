@@ -1352,11 +1352,11 @@ media_player:
     name: Media player alarm
     media_pipeline:
         speaker: media_spk_resampling_input
-        num_channels: 1
+        num_channels: 2
         format: NONE
     announcement_pipeline:
         speaker: announcement_spk_resampling_input
-        num_channels: 1
+        num_channels: 2
         format: NONE
     on_announcement:
       - mixer_speaker.apply_ducking:
